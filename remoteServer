@@ -1,0 +1,11 @@
+54.158.170.196
+
+
+ssh -i /Users/ywang/Documents/HUSHDEV.pem bitnami@54.158.170.196
+
+
+
+
+ssh -i /Users/ywang/Documents/HUSHDEV.pem ubuntu@54.158.170.196
+
+/opt/bitnami/apache2/htdocs

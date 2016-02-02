@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html >
+  <head>
+    <meta charset="UTF-8">
+    <title>Stopwatch (JavaScript)</title>
+    
+    
+    
+    
+        <style>
+      /* NOTE: The styles were added inline because Prefixfree needs access to your styles and they must be inlined if they are on local disk! */
+      * {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #333;
+  color: lime;
+  font-family: Menlo;
+}
+
+.controls {
+  position: fixed;
+  text-align: center;
+  top: 1em;
+  width: 100%;
+  word-spacing: 2em;
+}
+
+.button {
+  color: lime;
+  font-size: 2em;
+  text-decoration: none;
+  text-shadow: 0 0 1em lime;
+}
+
+.button:hover {
+  color: white;
+  text-shadow: 0 0 1em white;
+}
+
+.stopwatch {
+  font-size: 2vw;
+  height: 20%;
+  line-height: 100vh;
+  text-align: center;
+  text-shadow: 0 0 0.2em lime;
+}
+
+.results {
+  border-color: lime;
+  margin: 0 auto;
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 10em;
+}
+    </style>
+
+     
+    
+  </head>
+
+  <body>
+
+    <nav class="controls">
+			<a href="#" class="button" onClick="Stopwatch.start();">Start</a>
+			<a href="#" class="button" onClick="Stopwatch.lap();">Lap</a>
+			<a href="#" class="button" onClick="Stopwatch.stop();">Stop</a>
+			<a href="#" class="button" onClick="Stopwatch.restart();">Restart</a>
+		</nav>
+		<div class="stopwatch"></div>
+		 
+     
+
+        <script src="js/index.js"></script>
+
+    
+    
+    
+  </body>
+</html>

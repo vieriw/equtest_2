@@ -1,0 +1,714 @@
+ <!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>landscap</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #71544e;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+
+				background-color: #bfd1e5;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+
+				color: #b07861;
+			}
+
+		</style>
+	</head>
+	<body>
+
+		<div id="container"><br /><br /><br /><br /><br />Generating...</div>
+	
+
+		<script src="js/build/three.min.js"></script>
+        <script src="js/controls/OrbitControls.js"></script>
+		<script src="js/renderers/Projector.js"></script>
+		<script src="js/renderers/CanvasRenderer.js"></script>
+
+		<script src="js/libs/stats.min.js"></script>
+
+		<script src="js/ImprovedNoise.js"></script>
+<script src="js/Simple1DNoise.js"></script>
+
+        <script src="js/PerlinNoise.js"></script>
+		<script>
+            var speed=0.1;
+			var container, stats;
+            var clock = new THREE.Clock();
+			var camera, scene;
+			var cameraOrtho, sceneRenderTarget;
+            var times=0;
+			var mesh, meshR;
+            var meshL=[];
+            var meshR=[];
+            var curveL=[];
+            var curveR=[];
+            var meshRoad=[];
+            var sphereList=[];
+			var mouseX = 0, mouseY = 0;
+
+            var SCREEN_WIDTH = window.innerWidth;
+			var SCREEN_HEIGHT = window.innerHeight;
+            var perlinRandom=Math.random() * 10;
+		
+        
+            var printMaterial;
+            var roadMaterial;
+            var quality=25;
+            var step=1;
+            var dataW=25, dataH=200;
+            var scaleW=6;
+            var scaleH=1.4;
+            var visible=false;
+            var reset=true;
+
+			var meshCurrentV=0
+            var meshCurrentTranslate=0
+			var lastcameraH=0;
+
+			var generator
+            	init();
+			animate();
+
+
+
+			function init() {
+
+		 
+				container = document.getElementById( 'container' );
+                sceneRenderTarget = new THREE.Scene();
+
+				cameraOrtho = new THREE.OrthographicCamera( SCREEN_WIDTH / - 2, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, SCREEN_HEIGHT / - 2, -10000, 10000 );
+				cameraOrtho.position.z = 10000;
+             
+				sceneRenderTarget.add( cameraOrtho );
+
+				// CAMERA
+                
+				camera = new THREE.PerspectiveCamera(80, SCREEN_WIDTH / SCREEN_HEIGHT,  1, 10000 );
+				//camera.position.set( -1200, 800, 1200 );
+                camera.position.set(  0, 7, 120);
+			    controls = new THREE.OrbitControls( camera );
+				//controls.target.set( 0, 0, 0 );
+
+			 	//controls.rotateSpeed = 1.2;
+				//controls.zoomSpeed = 0.2;
+			// controls.panSpeed = 0.2;
+        
+				scene = new THREE.Scene();
+           //
+             //  scene.fog = new THREE.FogExp2( 0x000000, 0.0045 );
+              //   scene.fog = new THREE.Fog( 0x000000, 400, 1000 );
+			//	var data = generateHeight( dataW, dataH, perlinRandom);
+			 	var ambient = new THREE.AmbientLight( 0xffffff,1.1);
+                 scene.add( ambient );
+
+			     directionalLight = new THREE.DirectionalLight( 0xffffff, 1.15 );
+				directionalLight.position.set( 500, 2000, 0 );
+				scene.add( directionalLight );
+
+				pointLight = new THREE.PointLight( 0xff4400, 1.5 );
+				pointLight.position.set( 0, 0, 0 );
+				scene.add( pointLight );
+
+
+            
+			      generator = new Simple1DNoise();
+
+
+			   
+				//var texture = new THREE.CanvasTexture( generateTexture( data, 1024, 1024 ) );
+				//var material = new THREE.MeshBasicMaterial( { map: texture, overdraw: 0.5 } );
+
+				//quality = 50, step = 50 / quality
+
+				// var geometry = new THREE.PlaneGeometry(600, 600, quality - 1, quality - 1 );
+				// geometry.rotateX( - Math.PI / 2 );
+              
+    //             var geometryR = new THREE.PlaneGeometry( 600, 600, quality - 1, quality - 1 );
+				// geometryR.rotateX( - Math.PI / 2 );
+
+    //             var geometryL1 = new THREE.PlaneGeometry(600, 600, quality - 1, quality - 1 );
+				// geometryL1.rotateX( - Math.PI / 2 );
+
+    //             var geometryL2 = new THREE.PlaneGeometry(600,600, quality - 1, quality - 1 );
+				// geometryL2.rotateX( - Math.PI / 2 );
+
+				// for ( var i = 0, l = geometry.vertices.length; i < l; i ++ ) {
+
+				// 	var x = i % quality, y = Math.floor( i / quality );
+					 
+				// 	//geometryL1.vertices[ i ].y = data[ ( x * step ) + ( y * step )*50] * 7 - 2;
+				// 	geometryR.vertices[ i ].y = data[ ( x * step ) + ( y * step )*quality] * 7 - 2;				
+				// 	geometryL1.vertices[ i ].y =data[ ( x * step ) + ( y * step )*quality] * 7 - 2;
+				// 	geometryL2.vertices[ i ].y = data[ ( x * step ) + ( y * step )*quality+geometry.vertices.length-step*quality] * 7 - 2;
+
+				// }
+
+			//	 var diffuseTexture  = THREE.ImageUtils.loadTexture( "textures/UV_Grid_Sm.jpg", null, loadTextures );
+		 
+
+
+ 
+
+                var planeTex = THREE.ImageUtils.loadTexture("textures/lines/6.png");
+
+                planeTex.wrapS = THREE.RepeatWrapping;
+				planeTex.wrapT = THREE.RepeatWrapping;
+				planeTex.repeat.set( 4, 120 );
+              
+                 visible = true;
+
+	             var groundMaterial = new THREE.MeshBasicMaterial({
+         		 //color: 0xd5d5d5,
+         		 color: 0x000000,
+         		// map: planeTex,
+         		 fog: 			true
+    			 });
+
+                plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 1000,10, 20), groundMaterial);
+			    plane.rotation.x = -Math.PI / 2;
+			    plane.receiveShadow = true;
+			    plane.castShadow = true;
+			    //plane.position.set (0, -2, 0);
+		        scene.add(plane);
+
+    //             var backTex = THREE.ImageUtils.loadTexture("textures/lines/6.png");
+    //             backTex.wrapS = THREE.RepeatWrapping;
+				// backTex.wrapT = THREE.RepeatWrapping;
+				// backTex.repeat.set( 4, 280 );
+
+    //     		var backgroundMesh = new THREE.Mesh(
+    //         	new THREE.PlaneGeometry(1000, 1000, 10,10),
+    //         	new THREE.MeshBasicMaterial({
+    //             map: backTex
+    //         	}));
+
+    //     		backgroundMesh .material.depthTest = false;
+    //    			backgroundMesh .material.depthWrite = false;
+
+                //scene.add(backgroundMesh);
+
+
+
+                 printMaterial = new THREE.MeshBasicMaterial( { 
+		         color       : 0xFFFFFF,
+		      //   color       : 0x5c5c5c,
+		         // emissive:   0x5c5c5c,
+		         map:  planeTex,
+		       //  side: THREE.DoubleSide ,
+		        // shading: THREE.SmoothShading,
+		         //   shading:THREE.FlatShading
+		        // bumpMap:noiseTexture	
+		         //vertexColors:THREE.VertexColors
+		         // wireframe : true,
+		         fog: 			true
+		        } );
+
+                roadMaterial = new THREE.MeshBasicMaterial( { 
+		        color       : 0xffffff,
+                   wireframe : true,
+		         fog: 			true
+		        } );
+
+                generateMesh();
+                generateMesh();
+                generateMesh();
+
+	           
+
+				// mesh = new THREE.Mesh( geometry, printMaterial);
+				// mesh.position.set (- 320, 0, 0);
+				// scene.add( mesh );
+    //             meshL.push(new THREE.Mesh( geometryL1, printMaterial));
+				// meshL[0].position.set (- 320, 0, 0);
+				// scene.add( meshL[0] );		
+				// meshL.push(new THREE.Mesh( geometryL2, printMaterial));
+				// meshL[1].position.set (- 320, 0, 600);
+				// scene.add( meshL[1] );
+
+
+                
+/*
+                var geometryL2 = new THREE.PlaneGeometry(600,600, quality - 1, quality - 1 );
+				geometryL2.rotateX( - Math.PI / 2 );
+
+				for ( var i = 0, l = geometry.vertices.length; i < l; i ++ ) {
+					var x = i % quality, y = Math.floor( i / quality );
+					geometryL2.vertices[ i ].y = data[ ( x * step ) + ( y * step )*50+geometry.vertices.length] * 7 - 2;
+
+				}
+		        meshL.push(new THREE.Mesh( geometryL2, printMaterial));
+				meshL[1].position.set (- 320, 0, 600);
+				scene.add( meshL[1] );
+
+                
+                meshR = new THREE.Mesh( geometryR, printMaterial);
+			 	scene.add( meshR );
+                meshR.position.set ( 320, 0, 0);
+*/
+
+				renderer = new THREE.WebGLRenderer();
+			   // renderer.setClearColor( scene.fog.color );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				container.innerHTML = "";
+                renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+
+				container.appendChild( renderer.domElement );
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				//container.appendChild( stats.domElement );
+
+                document.addEventListener( 'keydown', onKeyDown, false );
+				
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+            function onKeyDown ( event ) {
+
+				switch( event.keyCode ) {
+
+					case 87: /*N*/  speed+=0.08; break;
+					case 83: /*M*/  speed-=0.08; break;
+
+				}
+               speed=THREE.Math.clamp(speed, 0,3) 
+			}
+			function onWindowResize() {
+
+			
+				SCREEN_WIDTH = window.innerWidth;
+				SCREEN_HEIGHT = window.innerHeight;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+            
+            function generateMesh( _offset){
+            	   if (!_offset){
+            	   	_offset=0;
+            	   }
+                   var data =generateHeight( dataW, dataH, perlinRandom,times,0)
+
+                   var dataR =generateHeight( dataW, dataH, perlinRandom,times,1)
+
+                   var dataA= generateHeightAdj(dataH, perlinRandom,times)
+
+                //   console.log(dataA)
+                  
+                   var points=[];
+                   var geometryL = new THREE.PlaneGeometry(dataW*scaleW, dataH*scaleH, quality - 1, quality*dataH/dataW - 1 );
+                   var geometryR = new THREE.PlaneGeometry(dataW*scaleW, dataH*scaleH, quality - 1, quality*dataH/dataW - 1 );
+
+                   geometryL.rotateX( - Math.PI / 2 );
+                   geometryL.rotateY( - Math.PI   );
+
+                   geometryR.rotateX( - Math.PI / 2 );
+                   geometryR.rotateY( - Math.PI   );
+
+                   var geometrylineL = new THREE.Geometry();
+				   var geometrylineR = new THREE.Geometry();
+
+                   var geometryRoad= new THREE.PlaneGeometry(6*scaleW ,dataH*scaleH, 1, dataH-1  );
+                   geometryRoad.rotateX( - Math.PI / 2 );
+                   geometryRoad.rotateY( - Math.PI   );
+                   var counter=0;
+                   var heightY=0;
+                   for ( var i = 0, l = geometryL.vertices.length; i < l; i ++ ) {
+					var x = i % quality, y = Math.floor( i / quality );
+	
+
+				 	geometryL.vertices[ i ].y =data[ ( x * step ) + ( y * step )*quality] * 0.46;
+				  	geometryL.vertices[ i ].y +=(dataA[ ( y * step )] ) *  0.2;
+				 	geometryR.vertices[ i ].y =dataR[ ( x * step ) + ( y * step )*quality] *0.7;
+                    geometryR.vertices[ i ].y +=(dataA[ ( y * step )] ) *  0.2;
+
+                    geometryRoad.vertices[y*2].y  =  (dataA[  y ] ) *  10;
+                    
+                    geometryRoad.vertices[y*2+1].y  =(dataA[  y ] ) * 10;
+ 
+				 	if (x==0){
+				 	geometrylineL.vertices.push(geometryL.vertices[i])	;
+				 	
+				 	
+				 	//geometryRoad.vertices[counter].x=(geometryL.vertices[i].x)
+				 	//geometryRoad.vertices[counter].z=(geometryL.vertices[i].z)
+				 	counter++;		 	
+				 	}else if(x==quality-1){
+				 	geometrylineR.vertices.push(geometryR.vertices[i])	;
+				  
+				 //	geometryRoad.vertices[counter].z=(geometryR.vertices[i].z)
+				 	counter++;
+				 	}
+
+				 	
+				//	geometryR.vertices[ i ].y = data[ ( x * step ) + ( y * step )*quality+geometry.vertices.length-step*quality] * 7 - 2;
+				   }
+
+
+
+				   for ( var i = 0, l = geometryRoad.vertices.length/2; i < l; i ++ ) {
+					console.log(geometryRoad.vertices[i*2].y )
+						}
+
+
+                   var meshtempL=new THREE.Mesh( geometryL, printMaterial)  
+				   meshtempL.position.set (- (dataW/2+3)*scaleW, 0, (-dataH*scaleH)*times+_offset);
+				   meshL.push(meshtempL);
+				//  scene.add( meshtempL );
+
+				   var meshtempR=new THREE.Mesh( geometryR, printMaterial)  
+				   meshtempR.position.set ( (dataW/2+3)*scaleW,  0,  (-dataH*scaleH)*times+_offset);
+				   meshR.push(meshtempR);
+			//	 scene.add( meshtempR );
+
+				    
+                   var meshtempRoad=new THREE.Mesh( geometryRoad, roadMaterial)  
+				   meshtempRoad.position.set (0, 0 ,(-dataH*scaleH)*times+_offset);
+				   meshRoad.push(meshtempRoad);
+				   scene.add(meshtempRoad);
+
+                   var  curvetempL  = new THREE.Line( geometrylineL , new THREE.LineBasicMaterial( {
+						color: 0xCECECE,
+						opacity: 0.85,
+						linewidth: 2
+					 } ) );
+
+				   curvetempL.position.set ( -(dataW/2+3)*scaleW, 0,  (-dataH*scaleH)*times+_offset); 
+			       curveL.push(curvetempL)
+			  //     scene.add( curvetempL  );
+                   
+
+				    var  curvetempR  = new THREE.Line( geometrylineR , new THREE.LineBasicMaterial( {
+						color: 0xCECECE,
+						opacity: 0.85,
+						linewidth: 2
+					 } ) );
+				   curvetempR.position.set (  (dataW/2+3)*scaleW, 0,  (-dataH*scaleH)*times+_offset); 
+				   curveR.push(curvetempR)
+			   //    scene.add( curvetempR  );
+
+
+                   var material = new THREE.MeshBasicMaterial({
+						color: 0x002F93,
+						fog:true
+					});
+
+					var radius =5;
+					var segments = 32;
+                    
+
+                    if (times==0){
+					// var circleGeometry = new THREE.CircleGeometry( radius, segments );
+					// var circle = new THREE.Mesh( circleGeometry, material );
+					// circle.position.set ( 10 , 0,  60); 
+     //                sphereList.push(circle);
+					// scene.add( circle);
+
+
+			        var sphereGeometry = new THREE.SphereGeometry( radius,segments,segments  );
+			        var sphere=new THREE.Mesh( sphereGeometry, material );
+			        sphere.position.set ( 10 , 0,  110); 
+                    sphereList.push(sphere);
+					scene.add(  sphere);
+                      }
+				    times++;		
+                }
+
+			function generateHeight( width, height, _z , times , _right) {
+
+				var data = new Uint8Array( width * height ), perlin = new ImprovedNoise(),
+				size = width * height, quality = 2, z =_z ;
+
+				for ( var j = 0; j < 4; j ++ ) {
+
+					quality *= 3;
+
+					for ( var i = 0; i < size; i ++ ) {
+
+						var x = i % width, y = ~~ ( i / width );
+					    var xx= x+_right*(width-1);
+						y+=times*(height-1);
+
+					    // if ((x==0)||(x==width-1)){
+         //                data[ i ]= 0;
+					    // }else if((x==1)||(x==width-2)){
+         //                data[ i ]+= Math.min(  Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2 , 1);
+					    // }else if((x==2)||(x==width-3)){
+         //                data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 2 );
+					    // }else if((x==3)||(x==width-4)){
+         //                data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 5 );
+					    // }else if((x==4)||(x==width-5)){
+         //                data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 8 );
+					    // }else {
+						//
+						data[ i ] += Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2 ;
+                  //      }
+
+                    //    console.log(data[ i ])
+					 //    if ((x==0)||(x==width-1)){
+      //                     data[ i ]+=  (  Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2 +1)/2;
+					 //    }else if((x==1)||(x==width-2)){
+      //                     data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 2 );
+					 //    }else if((x==3)||(x==width-4)){
+      //                     data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 5 );
+					 //    }else if((x==2)||(x==width-3)){
+      //                     data[ i ]+= Math.min(Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2, 8 );
+					 //    }else {
+                        
+					    
+                        
+						// //
+						// data[ i ] += Math.abs( perlin.noise( xx / quality, y / quality, z ) * 0.5 ) * quality*2 ;
+      //                   }
+					}
+
+				}
+               //console.log(data)
+				return data;
+
+			}
+
+			
+
+			  
+			    
+			   
+
+            function generateHeightAdj(  height, _z  ) {
+
+				var data = new Float32Array(height)
+
+				perlin = new ImprovedNoise() 
+				
+
+				for ( var i = 0; i < height; i ++ ) {
+						 var a=i+ times*(height-1);
+						  console.log(a)
+                         data[ i ] = generator.getVal(a);
+
+                         
+				}
+               
+				return data;
+
+			}
+   //           function generateHeightAdj(  height, _z , times ) {
+
+			// 	var data = new Uint8Array(height ), perlin = new ClassicalNoise(),
+			// 	  quality = 2, z =_z ;
+          
+			// 	for ( var j = 0; j <1; j ++ ) {
+
+			// 		quality *=  43;
+
+			// 		for ( var i = 0; i < height; i ++ ) {
+			// 			 y = i;
+			// 		     y += times*(height-1);
+					 
+			// 		     // console.log(y)
+   //                       data[ i ] = Math.cos( perlin.noise( 0, y/quality, z ) * 0.5 ) * quality*20;
+   //                       if (i==0){
+			// 		     	console.log(y+"~"+data[i]);
+			// 		     }
+			// 		     if (i==height-1){
+			// 		     	console.log(y+"~"+data[i]);
+			// 		     }
+   //                    console.log(data[ i ])
+			// 		}
+
+			// 	}
+   //             //console.log(data)
+			// 	return data;
+
+
+			// }
+		
+
+
+
+
+
+
+
+			function generateTexture( data, width, height ) {
+
+				var canvas, context, image, imageData,
+				level, diff, vector3, sun, shade;
+
+				vector3 = new THREE.Vector3( 0, 0, 0 );
+
+				sun = new THREE.Vector3( 1, 1, 1 );
+				sun.normalize();
+
+				canvas = document.createElement( 'canvas' );
+				canvas.width = width;
+				canvas.height = height;
+
+				context = canvas.getContext( '2d' );
+				context.fillStyle = '#000';
+				context.fillRect( 0, 0, width, height );
+
+				image = context.getImageData( 0, 0, width, height );
+				imageData = image.data;
+
+				for ( var i = 0, j = 0, l = imageData.length; i < l; i += 4, j ++  ) {
+
+					vector3.x = data[ j - 1 ] - data[ j + 1 ];
+					vector3.y = 2;
+					vector3.z = data[ j - width ] - data[ j + width ];
+					vector3.normalize();
+
+					shade = vector3.dot( sun );
+
+					imageData[ i ] = ( 96 + shade * 128 ) * ( data[ j ] * 0.007 );
+					imageData[ i + 1 ] = ( 32 + shade * 96 ) * ( data[ j ] * 0.007 );
+					imageData[ i + 2 ] = ( shade * 96 ) * ( data[ j ] * 0.007 );
+
+				}
+
+				context.putImageData( image, 0, 0 );
+
+				return canvas;
+
+			}
+
+			function onDocumentMouseMove(event) {
+
+				//mouseX = event.clientX - windowHalfX;
+				//mouseY = event.clientY - windowHalfY;
+
+			}
+
+			function loadTextures() {
+
+				//textureCounter += 1;
+
+				//if ( textureCounter == 3 )	{
+
+					 visible = true;
+
+				//}
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+				//stats.update();
+
+			}
+          
+		
+
+			function render() {
+			 var delta = clock.getDelta();
+               if ( visible){
+
+			  // console.log(delta*speed)
+	           //  meshR.translateZ( -  delta *speed*15);
+
+					// var fLow = 0.1, fHigh = 0.8;
+
+					// var lightVal = THREE.Math.clamp( lightVal + 0.5 * delta *1,  fLow, fHigh );
+
+					// var valNorm = ( lightVal - fLow ) / ( fHigh - fLow );
+
+				//  scene.fog.color.setHSL( 0.1, 0.5, 0.8 );
+
+				//	renderer.setClearColor( scene.fog.color );
+
+	          
+	             for(var meshi in meshL){ 
+	                 // meshL[meshi].translateZ(delta *speed*25);
+	                 // meshR[meshi].translateZ(delta *speed*25);
+	                 // curveL[meshi].translateZ(delta *speed*25);
+	                 // curveR[meshi].translateZ(delta *speed*25);
+	                 // meshRoad[meshi].translateZ(delta *speed*25);
+	             }
+	             meshCurrentTranslate+=delta *speed*25;
+	             meshCurrentV=meshCurrentTranslate/scaleH*2 ;
+	           //  console.log(meshCurrentV);
+
+
+	             //	console.log(meshL[0].position.z)
+	            if (reset){
+	            	if (meshL[0].position.z>=dataH*scaleH){
+	            	reset=false;
+	            	meshCurrentTranslate-=dataH*scaleH;
+	           		}
+	            }
+	            if (meshRoad[0].position.z>=dataH*scaleH*2	){
+	               reset=true;
+	               console.log("!")
+	               var offset_adj=meshL[0].position.z-dataH*scaleH*2   
+	               generateMesh(1,offset_adj);
+
+	               scene.remove( meshL[0])
+	               scene.remove( meshR[0])
+	               scene.remove( curveL[0])
+	               scene.remove( curveR[0])
+	               scene.remove( meshRoad[0])
+
+	              // console.log(meshL)
+	               meshL.shift();
+	               meshR.shift();
+	               curveL.shift();
+	               curveR.shift();
+	               meshRoad.shift();
+	            }
+
+	           //  console.log( mesh.position)
+                    var verticeN=Math.floor(meshCurrentV)+30;
+                    verticeN=THREE.Math.clamp(verticeN, 0,200)
+	                var cameraH=meshL[0].geometry.vertices[verticeN].y; 
+                   // console.log(cameraH+"~~"+(cameraH-lastcameraH))
+			        //camera.position.y  -=  (cameraH-lastcameraH)*0.05;
+			      scene.position.y +=  (cameraH-lastcameraH)*0.0001
+			     	//console.log(camera.position.y )
+			        lastcameraH=cameraH
+
+                 
+			     for(var i in sphereList){ 
+	                 sphereList[i].translateZ(-delta *25*(2-speed)*(Math.random()-0.3) );   
+	                 sphereList[i].translateY((cameraH-lastcameraH) );   
+	             }
+
+			     	camera.lookAt( scene.position );
+					renderer.render( scene, camera );
+				}
+			}
+
+
+		</script>
+
+	</body>
+</html>

@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>landscap</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+
+			@font-face {
+				font-family: Graphik-load;
+				
+			 	src: url('font/Graphik-Thin.otf') 
+				 
+			}
+			html {
+			  background: #333;
+			 
+			 
+			}
+			body {
+				color: #71544e;
+			 
+				font-size:13px;
+				text-align:center;
+				font-family: Graphik-load;
+				background-color: #bfd1e5;
+				margin: 0px;
+				overflow: hidden;
+			}
+            ≈
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+			}
+
+			a {
+				color: #b07861;
+			}
+
+			.stopwatch {
+			  font-size: 1.5vw;
+              font-family: Graphik-load;
+              background-color: #000000;
+			  height: 5%;
+			  color:#cecece; 
+			 
+			  text-align: center;
+		 
+    		  padding:  1.2vh 0.7vw 0.0vh 0.7vw;
+			}
+
+		</style>
+	</head>
+
+
+
+	<body>
+
+		<div id="container"><br /><br /><br /><br /><br />Generating...</div>
+	    `
+		<script src="js/build/three.min.js"></script>
+		 
+        <script src="js/controls/OrbitControls.js"></script>
+		<script src="js/renderers/Projector.js"></script>
+		<script src="js/renderers/CanvasRenderer.js"></script>
+
+		<script src="js/libs/stats.min.js"></script>
+ 
+        
+		<script src="js/Simple1DNoise.js"></script>
+		<script src="js/helvetiker_regular.typeface.js"></script>
+
+        	<script id="fragmentShader" type="x-shader/x-fragment">
+
+				const float MAX_NUM_MILES = 9.0;
+				const float MAX_DOT = 45.0;
+				const float PI = 3.141592653589793238462643383279;
+				const float MAX_INTENSITY = 500.0;
+				const float MIN_INTENSITY_THICKNESS = 0.03;
+				const float MAX_INTENSITY_THICKNESS = 0.11;
+
+				uniform vec4 uFrontColor;
+				uniform vec4 uBackColor;
+				uniform float uIsSolid;
+				uniform float uHighlightCenter;
+
+				uniform float uNumOfMiles;
+				uniform float uActiveDist;
+				uniform float uRPM;
+				uniform float uIntensity;
+				uniform float uTransparent;
+				uniform float uMileStoneAnimTime;
+
+				varying vec2 vUV;
+				varying vec2 vRotatedUV;
+
+				float circle(vec2 center , float radius, float thickness, float la,float ha, float angle, float isSmooth)
+				{
+					float f = length(center);
+					float a = atan(center.y, center.x);
+					float smooth = 0.02;
+					if ( isSmooth == 1. ) {
+						return(	smoothstep(f,f+smooth,radius)
+							  * smoothstep(radius - thickness,radius - thickness+smooth,f)
+							  * smoothstep(la,la+smooth,a) * smoothstep(a-smooth,a,ha));
+					} else {
+						return( smoothstep(f,f+smooth,radius)
+							  * smoothstep(radius - thickness,radius - thickness+smooth,f)
+							  * step(la,a)*step(a,ha));
+					}
+				}
+
+				float dotCircle (vec2 center, float radius, float thickness, float dotNum, float dotGap )
+				{
+					float f = length(center);
+					float a = atan(center.y, center.x);
+					float t = radius - thickness;
+					float twoPI = PI * 2.0;
+					float seg = twoPI / dotNum;
+					float dotMod = mod ( a, seg );
+					float dot = 0.0;
+					float gap = seg - dotGap;
+					dot = smoothstep( dotMod, dotMod+0.02, gap ) * smoothstep( 0.0, 0.02, dotMod );
+					float ret = smoothstep(f, f+0.02, radius);
+					if(t > 0.0) {
+					  ret *= smoothstep( t, t + 0.01, f );
+					}
+					if(dotGap > 0.0) {
+					  ret *= dot;
+					}
+					return ret;
+				}
+
+				void main( )
+				{
+					vec2 p = -1.0 + 2.0 * vUV;
+					vec2 rp = -1.0 + 2.0 * vRotatedUV;
+					float f = 0.0;
+					float b = 0.0;
+					float animDistanceCircleMixer = 0.0;
+					float twoPI = 2.0 * PI;
+					float halfPI = PI * 0.5;
+					float intensityWheelRad = 0.35;
+					float thick = mix ( 0.0, MAX_INTENSITY_THICKNESS, clamp( uIntensity/MAX_INTENSITY, 0.0, 1.0 ) );
+					float intensity = floor( MAX_DOT - min( (uIntensity/MAX_INTENSITY) * (MAX_DOT - 4.0), MAX_DOT - 4.0 ) );
+					float dotGap = 0.08;
+					vec4 solidColor = vec4(uBackColor.rgb, 1.0);
+					
+					if (uMileStoneAnimTime > 0.0) {
+						f += dotCircle( rp, intensityWheelRad, intensityWheelRad, 1.0, 0.0 );
+						f += dotCircle( rp, intensityWheelRad, max( MIN_INTENSITY_THICKNESS+thick, intensityWheelRad * clamp(uMileStoneAnimTime, 0.0, 1.0)), 1.0, 0.0 );
+					} else {
+						f += dotCircle( rp, intensityWheelRad, MIN_INTENSITY_THICKNESS+thick, intensity, dotGap );
+					}
+
+					b += dotCircle(rp, intensityWheelRad+0.03, intensityWheelRad+0.03, 1.0, 0.0 );
+					vec4 backColor;
+					if ( uTransparent == 1.0 ) {
+						backColor = uBackColor;
+					} else {
+						backColor = mix ( uBackColor, solidColor, b );
+					}
+					if ( uHighlightCenter == 1.0 ) {
+						vec4 innerColor = vec4(uFrontColor.rgb, 1.0);
+						float inner = 0.0;
+						inner += dotCircle(rp, intensityWheelRad-0.15, intensityWheelRad-0.15, 1.0, 0.0 );
+						backColor = mix ( backColor, innerColor, inner );
+					}
+
+					thick = 0.0734;
+					float radius = intensityWheelRad + thick;
+					for (float i = 0.; i < MAX_NUM_MILES; i++) {
+				    	if ( i <= uNumOfMiles ) {
+				    		float lineThick = thick * 0.85;
+				    		//lineThick = 0.5;
+					    	if ( i == uNumOfMiles ) {
+					    		f += circle( p, radius, lineThick, PI - PI * (uActiveDist * 2.0), PI, halfPI, 1.0 );
+					    	} else {
+					    		if ( uMileStoneAnimTime == 0.0 || (i+1.0) < uMileStoneAnimTime ) {
+					    			f += circle( p, radius, lineThick, -PI, PI, halfPI, 0.0 );
+								} else {
+					        		animDistanceCircleMixer += circle( p, radius, lineThick, -PI, PI, halfPI, 0.0 ) * ( 0.5 + (clamp( uMileStoneAnimTime - i, 0.0, 1.0 ) * 0.5));
+						    	}
+							}
+							radius += thick;
+						}
+					}
+
+					vec4 col = mix( backColor, uFrontColor, animDistanceCircleMixer);
+					if (uIsSolid == 0.0){
+						col += mix( backColor, uFrontColor, f );
+					}
+
+					gl_FragColor = col;
+				}
+
+		</script>
+
+		<script id="vertexShader" type="x-shader/x-vertex">
+
+			uniform float uTime;
+			uniform float uRotation;
+
+			varying vec2 vRotatedUV;
+			varying vec2 vUV;
+
+			vec2 rotate ( vec2 v, float angle, vec2 offset ) {
+				float sinf = sin( angle );
+				float cosf = cos( angle );
+
+				mat2 rotationMatrix = mat2( cosf, -sinf, sinf, cosf );
+				return ((v - offset) * rotationMatrix)+offset;
+			}
+
+			void main() {
+				vec2 offset = vec2(0.5, 0.5);
+				float offsetRot = 1.57079632679;
+
+				vRotatedUV = rotate (uv, uRotation, offset);
+
+				vUV = rotate(uv, offsetRot, offset);
+
+				vec4 pos = vec4(position, 1.0);
+				gl_Position = projectionMatrix * modelViewMatrix * pos;
+			}
+
+
+		</script>
+
+		<script id="fragmentShaderPast" type="x-shader/x-fragment">
+  			
+		    uniform vec3  innerCol;
+			uniform vec3  strokeCol;
+			uniform float radius;
+			uniform float stroke;    
+			uniform float opacity;
+
+			varying vec2 vUV;
+            
+            void main()
+            {
+                float border =stroke/10.0;
+			    float d = distance(vUV, vec2(.5, .5));
+                float opa= d*4.0;
+			    if (d>radius){
+                    discard;
+			    }else if(d>=radius-border) {
+			    	gl_FragColor = vec4(innerCol,opa-opacity);
+			    }else {
+			    	//gl_FragColor = vec4(innerCol,opacity);
+			    } 
+            }
+	 
+		</script>
+
+        <script id="vertexShaderPast" type="x-shader/x-vertex">
+
+            varying vec2 vUV;
+            void main() {
+                vUV=uv;
+				gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+			}
+
+		</script>
+
+		<script>
+            
+		var defaultSpeed=0.6;
+		var speed=defaultSpeed;
+			var container, stats;
+            var clock = new THREE.Clock();
+			var camera, scene;
+			var cameraOrtho, sceneRenderTarget;
+            var times=0;
+			var mesh, meshR;
+            var meshL=[];
+            var meshR=[];
+            var curveL=[];
+            var curveR=[];
+            var meshRoad=[];
+            var sphereList=[];
+            var GateLines=[];
+            var Gates=[];
+            var groundLines=[];
+            var ReferDots=[];
+			var mouseX = 0, mouseY = 0;
+
+            var SCREEN_WIDTH = window.innerWidth;
+			var SCREEN_HEIGHT = window.innerHeight;
+            var perlinRandom=Math.random() * 10;
+		
+        
+            var printMaterial;
+            var roadMaterial;
+            var quality=2;
+            var step=1;
+            var dataW=1.5, dataH=15;
+            var scaleW=30;
+            var scaleH=1;
+            var visible=false;
+            var reset=true;
+            
+            var lineangle;
+
+			var meshCurrentV=0
+            var meshCurrentTranslate=0
+			var lastcameraH=0;
+            
+            var GeneralLineW=3;
+
+            var circle 
+            var uniforms
+            var uniformsPast
+            var totalH=0;
+            var roadCase=1;
+            var CurrentroadCase=1;
+
+            var Percentage=0;
+            var incrementer = .01;
+            var planeTex
+
+
+            var  curvetempL
+			var  curvetempR
+            var  generator
+			var  globalLineWidthAdd=0.0;
+			var curveList=[];
+			var roadMeshList=[];
+			var roadSideMeshList=[];
+			var times=0;
+             
+            var passTotal=10;
+			var  passCount=4;
+
+			var accelrate=0;
+			var heightAdd=0;
+            var heightSpeed=0;
+			var parent;
+			var MaterialCPast
+            var total=0;
+             
+            var clock;
+            var roundCount=0;
+            var countdown=0;
+
+
+            var textMesh;
+            var boardTex;
+            var billBoard;
+            var stop_Watch;
+
+            var timePeriod=[5,50,5,50,5,50];
+            var recordList=[];
+            var recordTemp
+            var smoothPercent=0.0;
+            var smoothAdd=0.0
+			var billBoardList=[];
+
+            var heightForceChange=true;
+
+            init();
+			animate();
+
+
+
+
+
+			function init() {
+
+		 
+				container = document.getElementById( 'container' );
+             //   sceneRenderTarget = new THREE.Scene();
+
+				// cameraOrtho = new THREE.OrthographicCamera( SCREEN_WIDTH / - 2, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, SCREEN_HEIGHT / - 2, -10000, 10000 );
+				// cameraOrtho.position.z = 10000;
+             
+				// sceneRenderTarget.add( cameraOrtho );
+
+				// CAMERA
+                 generator = new Simple1DNoise();
+                 generator.setAmplitude(1.6)
+                 generator.setScale(0.009)
+			//	camera = new THREE.PerspectiveCamera( 140, window.innerWidth / window.innerHeight,  1,100 );
+			    camera = new THREE.PerspectiveCamera( 130, 1600/500,  1,1000 );
+				//camera.position.set( -1200, 800, 1200 );
+                camera.position.set(  0, 6+1.2*3*15, 31);
+             //   camera.position.set(  0, 25, 31);
+           //   camera.position.set(  0, 600, 300);
+             
+			    controls = new THREE.OrbitControls( camera );
+			 //   sceneRenderTarget.add(camera);
+				//controls.target.set( 0, 0, 0 );
+
+			 	//controls.rotateSpeed = 1.2;
+				//controls.zoomSpeed = 0.2;
+			// controls.panSpeed = 0.2;
+        
+				scene = new THREE.Scene();
+
+		     	scene.add(camera)
+           //   
+  
+
+            stop_Watch = document.createElement("div");
+            stop_Watch.className = "stopwatch";
+           // stop_Watch.style.zIndex =1; 
+            stop_Watch.style.position = 'absolute';
+			//text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
+			stop_Watch.style.width = 20;
+			stop_Watch.style.height= 10;
+			stop_Watch.style.top =  window.innerHeight*0.1+ 'px';
+			stop_Watch.style.left = window.innerWidth*0.479 + 'px';
+			stop_Watch.align= "left";
+
+            document.body.appendChild(stop_Watch)
+            console.log(stop_Watch.innerHTML);
+           // stop_Watch.className = "stopwatch";
+           //
+
+
+             	parent = new THREE.Object3D();
+				scene.add( parent );
+				parent.position.set( 0,-45,0);
+                console.log(parent.position)
+
+				//parent.add(camera)
+
+           		 scene.fog = new THREE.FogExp2( 0x000000, 0.0120 );
+              //   scene.fog = new THREE.Fog( 0x000000, 400, 1000 );
+			//	var data = generateHeight( dataW, dataH, perlinRandom);
+			 	var ambient = new THREE.AmbientLight( 0xffffff,1.1);
+                parent.add( ambient );
+
+			    directionalLight = new THREE.DirectionalLight( 0xffffff, 1.15 );
+				directionalLight.position.set( 500, 2000, 0 );
+			//	scene.add( directionalLight );
+
+				pointLight = new THREE.PointLight( 0xff4400, 1.5 );
+				pointLight.position.set( 0, 0, 0 );
+			//	scene.add( pointLight );
+
+ 
+               // planeTex = THREE.ImageUtils.loadTexture("textures/lines/6.png");
+                planeTex = THREE.ImageUtils.loadTexture("textures/lava/lavatile.jpg");
+                planeTex.wrapS = THREE.RepeatWrapping;
+				planeTex.wrapT = THREE.RepeatWrapping;
+				//planeTex.repeat.set( 4, 80 );
+                planeTex.repeat.set( 1,1 );
+                visible = true;
+ 
+
+                boardTex=THREE.ImageUtils.loadTexture("textures/goteam1.png");
+               // boardTex.wrapS = THREE.RepeatWrapping;
+			  //	boardTex.wrapT = THREE.RepeatWrapping;
+				//planeTex.repeat.set( 4, 80 );
+               // boardTex.repeat.set( 1,1 );
+
+                var groundMaterial = new THREE.MeshDepthMaterial({
+        
+    			});
+                plane = new THREE.Mesh(new THREE.PlaneGeometry(50, 1000,10, 20), groundMaterial);
+			    plane.rotation.x = -Math.PI / 2;
+			    plane.receiveShadow = true;
+			    plane.castShadow = true;
+			    plane.position.set (0, 0, 0);
+	            //scene.add(plane);
+                
+
+                 printMaterial = new THREE.MeshBasicMaterial( { 
+		         color       : 0xFFFFFF,
+		      //   color       : 0x5c5c5c,
+		         // emissive:   0x5c5c5c,
+		         map:  planeTex,
+		        //  wireframe : true,
+		         fog: 			true
+		        } );
+
+                roadMaterial = new THREE.MeshBasicMaterial( { 
+		        color       : 0xffffff,
+		        // map:  planeTex,
+                 wireframe : true,
+		       //  fog: 			true
+		        } );
+
+    //             MaterialCPast=new THREE.LineBasicMaterial( {
+				// 		color: 0x0021ad,
+				// 		opacity: 1,
+				// 		linewidth: 3.4,
+    //                     fog:false
+				// } )  
+	            
+	             MaterialCTest=new THREE.MeshBasicMaterial( {
+						color: 0x0021ad,
+						opacity: 1,	 
+                        fog:false
+				} )  
+
+
+			   
+			   for(var i=0;i<passTotal;i++){
+                 
+			   	generateGroundLine( i, 0,CurrentroadCase,roadCase,   generateInfiniteLine(i,times,0) );
+			   	
+			   }
+
+                generateCircle();
+
+				renderer = new THREE.WebGLRenderer();
+			   // renderer.setClearColor( scene.fog.color );
+				renderer.setPixelRatio( window.devicePixelRatio );
+			  	renderer.setSize( window.innerWidth, window.innerWidth*5/16);
+			 //	renderer.setSize( 1600,500);
+			 //	renderer.setSize( 2000,625);
+			                renderer.sortObjects = true;
+				container.innerHTML = "";
+                renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+
+				container.appendChild( renderer.domElement );
+      
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				//container.appendChild( stats.domElement );
+
+                document.addEventListener( 'keydown', onKeyDown, false );
+				
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+				//
+
+				//window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+            function onKeyDown ( event ) {
+
+				switch( event.keyCode ) {
+
+					case 87: /*W*/  speed+=0.08; break;
+					case 83: /*S*/  speed-=0.08; break;
+					case 49:  /*1*/ if (roadCase!=1){ if(Percentage==1||Percentage==0){roadCase=1;Percentage=0;incrementer=0;}} break;
+					case 50:  /*2*/ if (roadCase!=2){ if(Percentage==1||Percentage==0){roadCase=2;Percentage=0;incrementer=0;}} break;
+					case 51:        if (roadCase!=3){ if(Percentage==1||Percentage==0){roadCase=3;Percentage=0;incrementer=0;}}break;
+
+					case 52:  /*4*/ globalLineWidthAdd+=0.5; console.log(globalLineWidthAdd); break;
+					case 53:        globalLineWidthAdd-=0.5; console.log(globalLineWidthAdd);break;
+
+                //    case 54: /*6*/  if ( heightForceChange){smoothAdd=0.02; heightForceChange=!heightForceChange}else{ smoothAdd=-0.02 ;heightForceChange=!heightForceChange} break;
+
+				}
+               speed=THREE.Math.clamp(speed, 0,3) 
+               GeneralLineW=THREE.Math.clamp(GeneralLineW, 0,50) 
+			}
+			function onWindowResize() {
+               
+			
+				SCREEN_WIDTH = window.innerWidth;
+				SCREEN_HEIGHT = window.innerHeight;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+         
+
+			function generateCircle( ){
+
+    		    uniforms = {
+
+				      uTime: { type: 'f', value: 0.0 },
+				      uFrontColor: { type: 'v4', value: new THREE.Vector4(1.0, 1.0, 1.0, 1.0)},
+				      uBackColor: { type: 'v4', value: new THREE.Vector4(0.0, 0.0, 0.0, 0.0) },
+				      uIsSolid: { type: 'f', value: 0.0 },
+				      uHighlightCenter: { type: 'f', value: 0.0},
+				      uNumOfMiles: { type: 'f', value: 0.0 },
+				      uActiveDist: { type: 'f', value: 0.0 },
+				      uRPM: { type: 'f', value: 0.0 },
+				      uIntensity: { type: 'f', value: 0.0 },
+				      uRotation: { type: 'f', value: 0.3 },
+				      uTransparent: { type: 'f', value: 1.0 },
+				      uMileStoneAnimTime: { type: 'f', value: 0.0 }
+				};
+
+ 
+                
+                materialC = new THREE.ShaderMaterial({
+                	  // wireframe:true,
+                	  uniforms: uniforms,
+     				  vertexShader: document.getElementById( 'vertexShader' ).textContent,
+				      fragmentShader:document.getElementById( 'fragmentShader' ).textContent,
+				      side: THREE.FrontSide,
+     				 transparent: true
+	      
+				})
+ 
+
+    			var californiaShape=  new THREE.PlaneGeometry(12, 12, 4,4)
+
+                 
+
+    			circle =  new THREE.Mesh( californiaShape,materialC);
+
+    			//circlePast =  new THREE.Mesh( Circlepoints,MaterialCPast);
+
+
+
+    //          circle = new THREE.Mesh(californiaShape, materialC )
+         		circle.position.set( -2.7, 165, 29);
+                circle.scale.set(0.3,0.3,0.3 ); 
+				circle.renderOrder = -1;
+       
+ 
+
+			    scene.add(  circle );
+ 
+
+            }
+
+
+            function generateCirclePast(start,_offset,_heightBase ){
+
+	            uniformsPast = {
+	            	innerCol :{ type: 'v3', value: new THREE.Vector3(0.1, 0.3, 0.9)},
+	            	strokeCol:{ type: 'v3', value: new THREE.Vector3(0.0, 0.0, 1.0)},
+	            	opacity:{ type: 'f', value: 0.0 },
+	            	radius: { type: 'f', value: 0.2 },
+					stroke: { type: "f", value: 0.1 }
+				};
+
+ 
+                materialCPast = new THREE.ShaderMaterial({
+                	  // wireframe:true,
+                	  uniforms: uniformsPast,
+     				  vertexShader: document.getElementById( 'vertexShaderPast' ).textContent,
+				      fragmentShader:document.getElementById( 'fragmentShaderPast' ).textContent,
+				      side: THREE.FrontSide,
+     				  transparent: true
+	      
+				})
+			 
+    			var californiaShape=  new THREE.PlaneGeometry(12, 12, 4,4)
+ 
+                circlePast =  new THREE.Mesh( californiaShape, materialCPast );
+
+				circlePast.position.set( 2.7, 165+_heightBase, 30);
+                circlePast.scale.set(0.3,0.3,0.3 ); 
+				circlePast.renderOrder = -1;
+
+			    scene.add(circlePast);
+
+            }
+
+
+            function generateBoard(start,_offset,_heightBase){
+
+    //         	var textGeo = new THREE.TextGeometry("GO TEAM!", {
+
+				// 	size: 80,
+				// 	height: 20,
+				// 	curveSegments: 1,
+				// 	font: "helvetiker"
+
+				// });
+
+				// textGeo.computeBoundingBox();
+				// var centerOffset = -0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+
+				// var material = new THREE.MeshFaceMaterial( [
+				// 	new THREE.MeshBasicMaterial( { color:  0xffffff, overdraw: 0.5 } )
+				// //	,new THREE.MeshBasicMaterial( { color: 0x000000, overdraw: 0.5 } )
+				// ] );
+
+				// textMesh = new THREE.Mesh( textGeo, material );
+
+    //             textMesh.position.set(centerOffset, _heightBase+3, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset);
+    //             textMesh.rotation.y = Math.PI * 2;
+    //             textMesh.scale.set(0.3,0.3,0.3 ); 
+				// textMesh.renderOrder = -1;
+				var  boardMaterial = new THREE.MeshBasicMaterial( { 
+		         color       : 0xFFFFFF,
+		          map:  boardTex,
+		        transparent:true,
+		        // fog: 			true
+		        } );
+               
+				
+                
+
+                var boardShape=  new THREE.PlaneGeometry(100, 100, 4,4)
+    			billBoard =  new THREE.Mesh( boardShape,boardMaterial);    			//circlePast =  new THREE.Mesh( Circlepoints,MaterialCPast);
+         		billBoard.position.set( 0, _heightBase+15.5, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset);
+              // 	billBoard.scale.set(1.3,0.3,0.3 ); 
+				billBoard.renderOrder = -1;
+                billBoardList.push(billBoard)
+				parent.add(billBoard)
+
+            }
+
+            function generateInfiniteLine(start, _times, _offset){
+            	    if (!_offset){
+            	   	_offset=0;
+            		}
+            	 
+                   var base = generator.getVal(0);   
+                   
+
+				   var data=generateHeightRoad( dataH,  _times)
+
+
+                   var geometryRoad= new THREE.PlaneGeometry(  dataW*scaleW,dataH*scaleH, 1,  dataH-1  ); 
+                   geometryRoad.rotateX( - Math.PI / 2 );
+                   geometryRoad.rotateY( - Math.PI   );
+                   
+                   for ( var i = 0, l = geometryRoad.vertices.length/2; i < l; i ++ ) {
+          //        	geometryRoad.vertices[i*2].y  =    (data[ i]-base)*60  +0.8*(_times*(dataH-1)+i) ;
+			  	    // geometryRoad.vertices[i*2+1].y  =  (data[ i]-base)*60  +0.8*(_times*(dataH-1)+i);
+						  
+			  	      	// geometryRoad.vertices[i*2].y  =    -0.3*1 +heightAdd ;
+			  	       //  geometryRoad.vertices[i*2+1].y  =  -0.3*1 +heightAdd  ;
+                            
+  
+			  	        geometryRoad.vertices[i*2].y  =    heightAdd ;
+			  	        geometryRoad.vertices[i*2+1].y  =  heightAdd  ;
+			  	    if (i!=geometryRoad.vertices.length/2-1){
+			  	    	heightAdd+=(data[ i])*1.3 * smoothPercent
+			  	    	// var smoothPercentAdjust =smoothPercent*smoothPercent ;
+			  	    	 smoothPercent+=smoothAdd;
+			  	    	 smoothPercent=THREE.Math.clamp(smoothPercent,0,1);
+			  	    	 //console.log("smoothPercent"+smoothPercent)
+			  	    }
+
+				   }
+
+                    var roadMaterial = new THREE.MeshBasicMaterial( { 
+		        		color       : 0x000022,
+		        		opacity:  0.0,
+		        		transparent: true,
+		         		fog: 		true
+		           } );
+   
+                   var meshtempRoad=new THREE.Mesh( geometryRoad, roadMaterial)  
+				   meshtempRoad.position.set (0, 0,  2.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset);
+
+				   meshtempRoad.renderOrder = -8;
+                   parent.add(meshtempRoad);
+				   roadMeshList.push(meshtempRoad)
+
+                   var sideMaterial = new THREE.MeshBasicMaterial( { 
+		        		color       : 0x000000,
+		        		opacity: 1.0,
+		        		transparent: false,
+		         		fog: 		true
+		           } );
+                   sideMaterial .side = THREE.DoubleSide;
+                   var geometrySide= new THREE.PlaneGeometry( 1600 ,dataH*scaleH, 1,  dataH-1  ); 
+                   geometrySide.rotateX( - Math.PI / 2 );
+                   geometrySide.rotateY( - Math.PI );
+             
+				   for ( var i = 0, l = geometrySide.vertices.length/2; i < l; i ++ ) {
+                 	geometrySide.vertices[i*2].y  =    geometryRoad.vertices[i*2].y ;
+			  	    geometrySide.vertices[i*2+1].y  =  geometryRoad.vertices[i*2+1].y  ;
+				   }
+
+                   
+				   var meshtempSide=new THREE.Mesh( geometrySide, sideMaterial)  
+				   
+				   meshtempSide.position.set (dataW*scaleW/2+800,-0.7,  2.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset);
+
+				   meshtempSide.renderOrder = -2;
+
+                   parent.add(meshtempSide);
+				   roadSideMeshList.push(meshtempSide)
+
+                   var meshtempSide=new THREE.Mesh( geometrySide, sideMaterial)  
+				   
+				   meshtempSide.position.set (-800-dataW*scaleW/2, -0.7,  2.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset);
+
+				   meshtempSide.renderOrder = -2;
+                   parent.add(meshtempSide);
+
+				   roadSideMeshList.push(meshtempSide)
+
+
+  				   var geometrylineL = new THREE.Geometry();
+
+				   for ( var i = 0, l = dataH; i < l; i ++ ) {	
+                  	 geometrylineL.vertices.push( geometryRoad.vertices[i*2]  )
+
+				   }
+                     
+
+                   var lineMaterial=new THREE.LineBasicMaterial( {
+						color: 0xffffff,
+						opacity: 1,
+						linewidth: 3+globalLineWidthAdd,
+						fog:true
+ 
+				   } )  
+                   
+                   curvetempL  = new THREE.Line( geometrylineL , lineMaterial)
+
+                   curvetempR  = new THREE.Line( geometrylineL , lineMaterial)
+
+				   curvetempL.position.set (  -dataW*scaleW, 0, 2.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+
+				   curvetempL.renderOrder = -6;
+			       parent.add( curvetempL);
+                   curveList.push(curvetempL)
+				   curvetempR.position.set (   0, 0, 2.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+				   curvetempR.renderOrder = -6;
+			       parent.add( curvetempR);
+		           curveList.push(curvetempR)
+  
+
+		           times++;
+		           
+		          
+		           
+
+		           return geometryRoad.vertices[0].y
+
+		           console.log(times+"~~"+ 3.5*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset)
+
+            }
+
+ 
+
+             function generateGroundLine(start , _offset , curCase, Case  , Height_Add){
+            	if (!_offset){
+            	   	_offset=0;
+            	}
+                 
+                var GateWidth=2;
+               
+                var counter=0;          
+
+                var lineMaterial=new THREE.LineBasicMaterial( {
+						color: 0xA0A0A0,
+						opacity: 1,
+						linewidth:1.5+globalLineWidthAdd,
+						fog:true
+ 
+				} )  
+                var GateMaterial= new THREE.MeshDepthMaterial( {
+                // color: 0xffffff ,
+                // side:THREE.DoubleSide,
+                // fog:true
+                } )
+
+                // var GateMaterial= new THREE.MeshBasicMaterial( {
+                // color: 0xffffff ,
+                // side:THREE.DoubleSide,
+             
+                // } )
+
+                if (curCase==1 && Case==1){
+                case12(1)
+                }else if(curCase==1 && Case==2){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.2, incrementer)*0.026;
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case12(1-Percentage)
+               
+                }else if(curCase==1 && Case==3){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.05, incrementer)*0.042;
+                   if (Percentage<0.3){
+                  	Percentage=0.3
+                  }
+          
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case13( 1-Percentage)
+
+                }else if(curCase==2 && Case==1){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.2, incrementer)*0.026;
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case12(Percentage)
+                }else if(curCase==2 && Case==2){
+                case12(0);
+                }else if(curCase==2 && Case==3){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.1, incrementer)*0.03;
+                      if (Percentage<0.3){
+                  	Percentage=0.3
+                  }
+                 // Percentage += Math.pow(1.5, incrementer)*0.03;
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case23(1-Percentage)
+
+                }else if(curCase==3 && Case==1){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.2, incrementer)*0.03;
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case13( Percentage)
+                }else if(curCase==3 && Case==2){
+                  incrementer += 1;
+                  Percentage += Math.pow(1.4, incrementer)*0.044;
+                  console.log(roadCase,Percentage)
+                  Percentage=THREE.Math.clamp(Percentage,0,1);
+                  case23( Percentage)
+                }else if(curCase==3 && Case==3){
+
+                case23(0)
+                }
+
+            
+                function case12( _Percentage){
+                ang= Math.PI / 2* _Percentage;
+              
+                var geometryGateLine=new THREE.Geometry();
+               // var geometryGateLine=[];
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+               
+                geometryGateLine.vertices.push(new THREE.Vector3(1600*Math.sin(-ang), 1600*Math.cos(ang), 0));
+
+
+
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+                
+				groundLine.position.set ( -dataW*scaleW/2, 0+Height_Add, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    parent.add( groundLine);
+                groundLine .renderOrder = -16;
+              
+        		var geometryGateLine=new THREE.Geometry();
+
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+              //  geometryGateLine.vertices.push(new THREE.Vector3(640, 0, 0))	;
+                geometryGateLine.vertices.push(new THREE.Vector3(1600*Math.sin(ang), 1600*Math.cos(ang), 0));
+
+                
+
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+				groundLine.position.set ( dataW*scaleW/2, 0+Height_Add, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    parent.add( groundLine);
+			    groundLine .renderOrder = -16;
+                }
+                
+
+                function case23( _Percentage){
+                
+                var geometryGateLine=new THREE.Geometry();
+
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+                geometryGateLine.vertices.push(new THREE.Vector3(0, 50+280*_Percentage, 0));
+                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 50+280*_Percentage,0));
+
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+			 //	groundLine.position.set (  -dataW*scaleW/2-640, 0,  (-dataH*scaleH)*start+_offset); 
+                groundLine.position.set (  -dataW*scaleW/2, 0+Height_Add,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    groundLine .renderOrder = -16;
+			    parent.add( groundLine);
+                   
+
+
+
+                var geometryGateLine=new THREE.Geometry();
+
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+                geometryGateLine.vertices.push(new THREE.Vector3(0, 50+280*_Percentage,0));
+                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,50+280*_Percentage,0));
+                
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+				groundLine.position.set (  dataW*scaleW/2, 0+Height_Add, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    groundLine .renderOrder = -16;
+			    parent.add( groundLine);
+                }
+
+
+                function case13( _Percentage){
+                
+                var geometryGateLine=new THREE.Geometry();
+
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0));
+				geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 0, 0));
+                geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 50+280*_Percentage, 0));
+                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 50+280*_Percentage,0));
+
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+			 //	groundLine.position.set (  -dataW*scaleW/2-640, 0,  (-dataH*scaleH)*start+_offset); 
+                groundLine.position.set ( -dataW*scaleW/2, 0+Height_Add,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    parent.add( groundLine);
+				groundLine .renderOrder = -16;
+                var geometryGateLine=new THREE.Geometry();
+
+				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+				geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 0, 0));
+                geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 50+280*_Percentage,0));
+                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,50+280*_Percentage,0));
+                
+                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
+				groundLine.position.set (  dataW*scaleW/2, 0+Height_Add, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+			    groundLines.push(groundLine)
+			    groundLine .renderOrder = -16;
+			    parent.add( groundLine);
+                }
+	
+               }
+ 
+
+			function onDocumentMouseMove(event) {
+
+				//mouseX = event.clientX - windowHalfX;
+				//mouseY = event.clientY - windowHalfY;
+
+			}
+
+			function loadTextures() {
+
+				//textureCounter += 1;
+
+				//if ( textureCounter == 3 )	{
+
+					 visible = true;
+
+				//}
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+				//stats.update();
+
+			}
+          
+		
+
+			function render() {
+			  var delta = clock.getDelta();
+            //   console.log(camera.position.y)
+
+       		   var raycaster = new THREE.Raycaster();
+               raycaster.set( camera.position, new  THREE.Vector3(0,-1,0));
+               var intersects
+               var distanceC =2;
+               if (speed!=0){
+               	 for (var i=0;i<roadMeshList.length;i++){
+               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+               	 	if(intersects.length!=0){
+						//	camera.position.y =intersects[0].point.y+6;
+						 	camera.position.y-=(intersects[0].distance-4);
+							// parent.position.y+=(intersects[0].distance-6);
+							//console.log(parent.position.y)
+							//circlePast.position.y+=(intersects[0].distance-6);
+						//	console.log(camera.position.y+"~~"+camera.position.z)
+                     }
+               	 }
+        
+               }
+               raycaster.set( camera.position, new  THREE.Vector3(0,1,0));
+               var intersects
+               var distanceC =2;
+               if (speed!=0){
+               	 for (var i=0;i<roadMeshList.length;i++){
+               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+               	 	if(intersects.length!=0){
+						//	camera.position.y =intersects[0].point.y+6;
+					       camera.position.y+=(intersects[0].distance-4);
+					 //    parent.position.y-=(intersects[0].distance-6);
+						//  circlePast.position.y-=(intersects[0].distance-6);
+						//	console.log()
+                     }
+  	 
+               	 }
+        
+               }
+
+ 				if (typeof circlePast != 'undefined' ){
+
+	  				 var raycaster = new THREE.Raycaster();
+	               raycaster.set( circlePast.position, new  THREE.Vector3(0,-1,0));
+	               var intersects
+	               var distanceC =2;
+	               if (speed!=0){
+	               	 for (var i=0;i<roadMeshList.length;i++){
+	               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+	               	 	if(intersects.length!=0){
+							circlePast.position.y =intersects[0].point.y+2;
+	                     }
+	               	 }
+	        
+	               }
+	               raycaster.set( circle.position, new  THREE.Vector3(0,1,0));
+	               var intersects
+	               var distanceC =2;
+	               if (speed!=0){
+	               	 for (var i=0;i<roadMeshList.length;i++){
+	               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+	               	 	if(intersects.length!=0){
+							circlePast.position.y =intersects[0].point.y+2;
+	                     }
+	  	 
+	               	 }
+	               }
+
+            }
+			
+
+             
+               var raycaster = new THREE.Raycaster();
+               raycaster.set( circle.position, new  THREE.Vector3(0,-1,0));
+               var intersects
+               var distanceC =2;
+               if (speed!=0){
+               	 for (var i=0;i<roadMeshList.length;i++){
+               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+               	 	if(intersects.length!=0){
+						circle.position.y =intersects[0].point.y+2;
+                     }
+               	 }
+        
+               }
+               raycaster.set( circle.position, new  THREE.Vector3(0,1,0));
+               var intersects
+               var distanceC =2;
+               if (speed!=0){
+               	 for (var i=0;i<roadMeshList.length;i++){
+               	 	intersects = raycaster.intersectObject( roadMeshList[i]);
+               	 	if(intersects.length!=0){
+						circle.position.y =intersects[0].point.y+2;
+                     }
+  	 
+               	 }
+        
+               }
+
+               // if (circle.position.x<circlePast.position.x){
+               //    //   circlePast.material
+
+               // }
+
+  				//console.log("roadSideMesh"+roadSideMeshList[2].position.y)
+  				//console.log("curveList"+curveList[2].position.y)
+
+
+               speed=THREE.Math.clamp(speed,0,2)
+
+               if ( visible){
+           //      parent.translateY(-delta *speed*250);
+		//	console.log(parent.position)
+                       
+             // console.log(roundCount)
+
+               if (Stopwatch.check()==timePeriod[roundCount]){
+                		if (roundCount%2==1){
+                			console.log(Stopwatch.check())
+	                		Stopwatch.restart();
+	                		console.log("rest")
+	                		recordList.push(recordTemp)
+	                		recordTemp=0;
+	                	    smoothAdd=-0.02
+                			roundCount=(roundCount+1)%timePeriod.length;
+                			console.log(Stopwatch.check())
+                		}else {
+                			console.log(Stopwatch.check())
+                			console.log("prepare")
+	                		countdown=1;
+	                	 	smoothAdd=0.02
+
+                	}
+                	  
+                }
+                    
+
+                recordTemp+=speed;
+
+              
+                          
+
+             
+ 
+                 for(var i in groundLines){ 
+	                 // curveL[i].translateZ(delta *speed*25);
+	                 // curveR[i].translateZ(delta *speed*25);
+	                groundLines[i].translateZ(delta *speed*25);
+	                curveList[i].translateZ(delta *speed*25);
+      
+	             }
+                 if (billBoardList[0]){
+
+                 	billBoardList[0].translateZ(delta *speed*25);
+                   
+				      if (billBoardList[0].position.z>=camera.position.z){
+				      	 console.log("Go team!")
+						Stopwatch.restart();
+						parent.remove(billBoardList[0]);
+						billBoardList.shift();
+				      }
+                 }
+
+                 for(var i in roadSideMeshList){ 
+ 
+                    roadSideMeshList[i].translateZ(delta *speed*25);
+	             }
+
+	              for(var i in roadMeshList){ 
+
+	                 // curveL[i].translateZ(delta *speed*25);
+	                 // curveR[i].translateZ(delta *speed*25);
+	                roadMeshList[i].translateZ(delta *speed*25);
+         
+	             }
+
+
+                  
+             //   scene.rotation.y += 1.02;
+			//		rotateAroundWorldAxis(  curvetempL, new THREE.Vector3( -1, 0, 0 ),Math.PI / 1160 )
+	             meshCurrentTranslate+=delta *speed*25;
+	             meshCurrentV=meshCurrentTranslate/scaleH*2 ;
+	           //  console.log(meshCurrentV);ww
+                 uniforms.uRPM.value  = 0.1+speed;
+                 uniforms.uRotation.value +=delta * (0.01+speed*1)*1.0;
+                
+                 uniforms.uIntensity.value =(speed-0.0)*130.0 ;
+                // circle.rotation.x-=Math.PI / 100;
+            //     circle.rotation.z -=Math.PI / 300;
+
+              //  circlePast.rotation.z -=Math.PI / 300;
+                
+                 // uniformsPast.opacity.value=(speed-defaultSpeed)*delta*20;
+              
+
+               //|||| circlePast != null
+                 
+                 if (typeof circlePast != 'undefined' ){
+
+                   var temp= Math.abs(1/(circlePast.position.z-circle.position.z))*0.01 
+                  temp= Math.pow(temp,2)*(speed-defaultSpeed)
+                  temp=THREE.Math.clamp(temp,-0.0001,0.0001)
+
+                     var Pass=circle.position.z-circlePast.position.z;
+                 if ((Pass>-0.2)&&(Pass<0.2)){
+ 				 uniformsPast.stroke.value=0.1+(0.2-Math.abs(Pass))*10;
+                 uniformsPast.stroke.value=THREE.Math.clamp(uniformsPast.stroke.value,0.1,3)
+                 //console.log("pass")
+
+                 }
+				
+               //   circlePast.translateZ(delta* Math.random()*1)
+                  circlePast.position.z +=delta *temp*1000;
+                  circlePast.position.z +=delta *(speed-defaultSpeed)*0.0015;
+                 // circlePast.position.z +=delta *  1/  (Math.abs((circlePast.position.z-circle.position.z)*3))
+
+                //   console.log(Math.pow(  Math.abs((circlePast.position.z-circle.position.z)*0.2  ),0.01))
+				//  circlePast.position.z=THREE.Math.clamp(circlePast.position.z,circle.position.z-dataH*scaleH*0.5, 29)
+                  circlePast.position.z=THREE.Math.clamp(circlePast.position.z,10, 29.5)
+              //    console.log(circlePast.position.z)
+				}
+					
+                
+	            if (groundLines[0].position.z>=passCount*dataH*scaleH){
+
+  
+		 				if (CurrentroadCase!=roadCase){
+		                
+		                
+		                }
+		           
+		                
+			             reset=true;
+			             var offset_adj=groundLines[0].position.z-passCount*dataH*scaleH   
+			            // generateInfiniteLine(6,times, offset_adj);
+			         //   generateInfiniteLine(8-passCount+1,times, offset_adj);
+			        //    generateGroundLine(8-passCount+1,offset_adj,CurrentroadCase,roadCase);
+			            var heightBase= generateInfiniteLine(passTotal-passCount+3,times, offset_adj)
+		                generateGroundLine(passTotal-passCount+3,offset_adj,CurrentroadCase,roadCase,  heightBase );
+                         
+                         if (countdown==1){
+                            generateBoard(passTotal-passCount+3,offset_adj,heightBase);
+                            countdown=0;
+                            roundCount=(roundCount+1)%timePeriod.length;
+
+                         }
+
+
+                         if ((recordList.length>0)&&(typeof circlePast === 'undefined' )&&(billBoardList.length>0)&&(billBoardList[0].position.z>24)){
+                         	console.log()
+							generateCirclePast( passTotal-passCount+3, offset_adj ,heightBase)
+						 }
+		                
+
+		                if (Percentage==1){
+		                	CurrentroadCase=roadCase;
+		                }
+
+		                if (groundLines[0]){
+                             
+				            for(var j=0;j<2;j++){
+				               parent.remove( groundLines[0])
+				               groundLines.shift();
+
+				               parent.remove(curveList[0])
+				               curveList.shift();
+
+				               parent.remove(roadSideMeshList[0])
+							   roadSideMeshList.shift();
+
+				             }
+			            }
+
+			            if (roadMeshList.length>0){
+						    parent.remove( roadMeshList[0])
+				            roadMeshList.shift();
+                              	
+                        }
+
+	            }
+
+
+    
+                  
+
+	           //  console.log( mesh.position)
+                    var verticeN=Math.floor(meshCurrentV)+30;
+                    verticeN=THREE.Math.clamp(verticeN, 0,200)
+	           //     var cameraH=meshL[0].geometry.vertices[verticeN].y; 
+                   // console.log(cameraH+"~~"+(cameraH-lastcameraH))
+                
+
+         
+                    
+			     for(var i in sphereList){ 
+	              //   sphereList[i].translateZ(-delta *25*(2-speed)*(Math.random()-0.3) );   
+	              //   sphereList[i].translateY((cameraH-lastcameraH) );   
+	              }
+
+			 	   // camera.lookAt( scene.position );
+			 	
+                  /// 
+                //  console.log(parent.position.y)
+                   var Ptemp=parent.position.y
+				    var Ctemp=camera.position.y
+					var temp=Ctemp- Ptemp
+                   camera.lookAt( new THREE.Vector3(0,camera.position.y, -100));
+
+                  //   circle.quaternion.copy( camera.quaternion );
+			 	  //  circlePast.quaternion.copy( camera.quaternion );
+                //     console.log(camera.getWorldDirection)
+                   // camera.lookAt( new THREE.Vector3(0,0, -1));
+                 //  console.log(scene.position)
+               //   camera.lookAt( camera.position );
+               //  camera.lookAt( scene.position);
+                 //   camera.lookAt( circle.position );
+              // circle.rotation.setRotationFromMatrix( camera.matrix )
+			   	// circle.lookAt( new THREE.Vector3( circle.position.x , camera.position.y,camera.position.z) );
+                // circlePast.lookAt( new THREE.Vector3(  0, camera.position.y,camera.position.z) );
+
+					renderer.render( scene, camera );
+				}
+			}
+
+
+			// function rotateAroundWorldAxis( object, axis, radians ) {
+			//     var rotationMatrix = new THREE.Matrix4();
+
+			//     rotationMatrix.makeRotationAxis( axis.normalize(), radians );
+			//     rotationMatrix.multiply( object.matrix );                       // pre-multiply
+			//     object.matrix = rotationMatrix;
+			//     object.rotation.setFromRotationMatrix( object.matrix );
+			// }
+	        
+
+		</script>
+
+		<script src="js/stopwatch.js"></script>
+
+	</body>
+</html>
