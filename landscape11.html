@@ -228,60 +228,170 @@
 
 		<script id="fragmentShaderPast" type="x-shader/x-fragment">
   			
-		    uniform vec3  innerCol;
-			uniform vec3  strokeCol;
-			uniform float radius;
-			uniform float stroke;    
-			uniform float opacity;
+          const float MAX_NUM_MILES = 9.0;
+				const float MAX_DOT = 45.0;
+				const float PI = 3.141592653589793238462643383279;
+				const float MAX_INTENSITY = 500.0;
+				const float MIN_INTENSITY_THICKNESS = 0.03;
+				const float MAX_INTENSITY_THICKNESS = 0.11;
 
-			varying vec2 vUV;
-            
-            void main()
-            {
-                float border =stroke/10.0;
-			    float d = distance(vUV, vec2(.5, .5));
-                float opa= d*4.0;
-			    if (d>radius){
-                    discard;
-			    }else if(d>=radius-border) {
-			    	gl_FragColor = vec4(innerCol,opa-opacity);
-			    }else {
-			    	//gl_FragColor = vec4(innerCol,opacity);
-			    } 
-            }
+				uniform vec4 uFrontColor;
+				uniform vec4 uBackColor;
+				uniform float uIsSolid;
+				uniform float uHighlightCenter;
+
+				uniform float uNumOfMiles;
+				uniform float uActiveDist;
+				uniform float uRPM;
+				uniform float uIntensity;
+				uniform float uTransparent;
+				uniform float uMileStoneAnimTime;
+
+				varying vec2 vUV;
+				varying vec2 vRotatedUV;
+
+				float circle(vec2 center , float radius, float thickness, float la,float ha, float angle, float isSmooth)
+				{
+					float f = length(center);
+					float a = atan(center.y, center.x);
+					float smooth = 0.02;
+					if ( isSmooth == 1. ) {
+						return(	smoothstep(f,f+smooth,radius)
+							  * smoothstep(radius - thickness,radius - thickness+smooth,f)
+							  * smoothstep(la,la+smooth,a) * smoothstep(a-smooth,a,ha));
+					} else {
+						return( smoothstep(f,f+smooth,radius)
+							  * smoothstep(radius - thickness,radius - thickness+smooth,f)
+							  * step(la,a)*step(a,ha));
+					}
+				}
+
+				float dotCircle (vec2 center, float radius, float thickness, float dotNum, float dotGap )
+				{
+					float f = length(center);
+					float a = atan(center.y, center.x);
+					float t = radius - thickness;
+					float twoPI = PI * 2.0;
+					float seg = twoPI / dotNum;
+					float dotMod = mod ( a, seg );
+					float dot = 0.0;
+					float gap = seg - dotGap;
+					dot = smoothstep( dotMod, dotMod+0.02, gap ) * smoothstep( 0.0, 0.02, dotMod );
+					float ret = smoothstep(f, f+0.02, radius);
+					if(t > 0.0) {
+					  ret *= smoothstep( t, t + 0.01, f );
+					}
+					if(dotGap > 0.0) {
+					  ret *= dot;
+					}
+					return ret;
+				}
+
+				void main( )
+				{
+					vec2 p = -1.0 + 2.0 * vUV;
+					vec2 rp = -1.0 + 2.0 * vRotatedUV;
+					float f = 0.0;
+					float b = 0.0;
+					float animDistanceCircleMixer = 0.0;
+					float twoPI = 2.0 * PI;
+					float halfPI = PI * 0.5;
+					float intensityWheelRad = 0.35;
+					float thick = mix ( 0.0, MAX_INTENSITY_THICKNESS, clamp( uIntensity/MAX_INTENSITY, 0.0, 1.0 ) );
+					float intensity = floor( MAX_DOT - min( (uIntensity/MAX_INTENSITY) * (MAX_DOT - 4.0), MAX_DOT - 4.0 ) );
+					float dotGap = 0.08;
+					vec4 solidColor = vec4(uBackColor.rgb, 1.0);
+					
+					if (uMileStoneAnimTime > 0.0) {
+						f += dotCircle( rp, intensityWheelRad, intensityWheelRad, 1.0, 0.0 );
+						f += dotCircle( rp, intensityWheelRad, max( MIN_INTENSITY_THICKNESS+thick, intensityWheelRad * clamp(uMileStoneAnimTime, 0.0, 1.0)), 1.0, 0.0 );
+					} else {
+						f += dotCircle( rp, intensityWheelRad, MIN_INTENSITY_THICKNESS+thick, intensity, dotGap );
+					}
+
+					b += dotCircle(rp, intensityWheelRad+0.03, intensityWheelRad+0.03, 1.0, 0.0 );
+					vec4 backColor;
+					if ( uTransparent == 1.0 ) {
+						backColor = uBackColor;
+					} else {
+						backColor = mix ( uBackColor, solidColor, b );
+					}
+					if ( uHighlightCenter == 1.0 ) {
+						vec4 innerColor = vec4(uFrontColor.rgb, 1.0);
+						float inner = 0.0;
+						inner += dotCircle(rp, intensityWheelRad-0.15, intensityWheelRad-0.15, 1.0, 0.0 );
+						backColor = mix ( backColor, innerColor, inner );
+					}
+
+					thick = 0.0734;
+					float radius = intensityWheelRad + thick;
+					for (float i = 0.; i < MAX_NUM_MILES; i++) {
+				    	if ( i <= uNumOfMiles ) {
+				    		float lineThick = thick * 0.85;
+				    		//lineThick = 0.5;
+					    	if ( i == uNumOfMiles ) {
+					    		f += circle( p, radius, lineThick, PI - PI * (uActiveDist * 2.0), PI, halfPI, 1.0 );
+					    	} else {
+					    		if ( uMileStoneAnimTime == 0.0 || (i+1.0) < uMileStoneAnimTime ) {
+					    			f += circle( p, radius, lineThick, -PI, PI, halfPI, 0.0 );
+								} else {
+					        		animDistanceCircleMixer += circle( p, radius, lineThick, -PI, PI, halfPI, 0.0 ) * ( 0.5 + (clamp( uMileStoneAnimTime - i, 0.0, 1.0 ) * 0.5));
+						    	}
+							}
+							radius += thick;
+						}
+					}
+
+					vec4 col = mix( backColor, uFrontColor, animDistanceCircleMixer);
+					if (uIsSolid == 0.0){
+						col += mix( backColor, uFrontColor, f );
+					}
+
+					gl_FragColor = col;
+				}
 	 
 		</script>
 
         <script id="vertexShaderPast" type="x-shader/x-vertex">
 
-            varying vec2 vUV;
-            void main() {
-                vUV=uv;
-				gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+        	uniform float uTime;
+			uniform float uRotation;
+
+			varying vec2 vRotatedUV;
+			varying vec2 vUV;
+
+			vec2 rotate ( vec2 v, float angle, vec2 offset ) {
+				float sinf = sin( angle );
+				float cosf = cos( angle );
+
+				mat2 rotationMatrix = mat2( cosf, -sinf, sinf, cosf );
+				return ((v - offset) * rotationMatrix)+offset;
+			}
+
+			void main() {
+				vec2 offset = vec2(0.5, 0.5);
+				float offsetRot = 1.57079632679;
+
+				vRotatedUV = rotate (uv, uRotation, offset);
+
+				vUV = rotate(uv, offsetRot, offset);
+
+				vec4 pos = vec4(position, 1.0);
+				gl_Position = projectionMatrix * modelViewMatrix * pos;
 			}
 
 		</script>
 
 		<script>
             
-		var defaultSpeed=0.6;
-		var speed=defaultSpeed;
+			var defaultSpeed=0.6;
+			var speed=defaultSpeed;
 			var container, stats;
             var clock = new THREE.Clock();
 			var camera, scene;
 			var cameraOrtho, sceneRenderTarget;
-            
-            var curveL=[];
-            var curveR=[];
-           
-            var sphereList=[];
-            var groundLines=[];
 			var mouseX = 0, mouseY = 0;
-
-            var SCREEN_WIDTH = window.innerWidth;
-			var SCREEN_HEIGHT = window.innerHeight;
-            var perlinRandom=Math.random() * 10;
-		   var scene2;
+		   	var scene2;
         
             var printMaterial;
             var roadMaterial;
@@ -292,12 +402,6 @@
             var scaleH=1;
             var visible=true;
             var reset=true;
-            
-            var lineangle;
-
-			var meshCurrentV=0
-            var meshCurrentTranslate=0
-			var lastcameraH=0;
             
             var GeneralLineW=3;
 
@@ -311,27 +415,17 @@
             var Percentage=0;
             var incrementer = .01;
 
-
-            var  curvetempL
-			var  curvetempR
-            var  generator
 			var  globalLineWidthAdd=0.0;
-			var curveList=[];
+			var  curveList=[];
              
             var passTotal=7;
 			var passCount=2;
 
-			var accelrate=0;
-			var heightAdd=0;
-            var heightSpeed=0;
 			var parent;
 			var MaterialCPast
-            var total=0;
-             
-            var clock;
+
             var roundCount=0;
             var countdown=0;
-
 
             var textMesh;
             var boardTex;
@@ -341,21 +435,21 @@
             var timePeriod=[5,20,35,40];
             var recordList=[];
             var recordTemp
-            var smoothPercent=0.0;
-            var smoothAdd=0.0
+
 			var billBoardList=[];
             var roadMeshList=[];
             var heightForceChange=true;
-				var roadTex;
-				var Gates=[];
-             var mileMarkerList=[];
+			var roadTex;
+			var groundLines=[];
+			var Gates=[];
+            var mileMarkerList=[];
 			var times=0;
              
 
-                     var currentMilesText;
-             var RecordMilesText;
-			 CurrenttotalMiles=0
-             RecordtotalMiles=0;
+            var currentMilesText;
+            var RecordMilesText;
+			CurrenttotalMiles=0
+            RecordtotalMiles=0;
             
             init();
 			animate();
@@ -369,54 +463,36 @@
 		   
 				container = document.getElementById( 'container' );
              //   sceneRenderTarget = new THREE.Scene();
-
- 
 			//	camera = new THREE.PerspectiveCamera( 140, window.innerWidth / window.innerHeight,  1,100 );
 			    camera = new THREE.PerspectiveCamera( 140, 1600/500,  1,1000 );
 				//camera.position.set( -1200, 800, 1200 );
                 camera.position.set(  0,6, 31);
              //   camera.position.set(  0, 25, 31);
-           //   camera.position.set(  0, 600, 300);
-             
-			    controls = new THREE.OrbitControls( camera );
-			 //   sceneRenderTarget.add(camera);
-				//controls.target.set( 0, 0, 0 );
 
-			 	//controls.rotateSpeed = 1.2;
-				//controls.zoomSpeed = 0.2;
-			// controls.panSpeed = 0.2;
+			    controls = new THREE.OrbitControls( camera );
         
 				scene = new THREE.Scene();
-		 
-		     //	scene.add(camera)
-           //   
                
+	            stop_Watch = document.createElement("div");
+	            stop_Watch.className = "stopwatch";
+	           // stop_Watch.style.zIndex =1; 
+	            stop_Watch.style.position = 'absolute';
+				//text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
+				stop_Watch.style.width = 20;
+				stop_Watch.style.height= 10;
+				stop_Watch.style.top =  window.innerHeight*0.1+ 'px';
+				stop_Watch.style.left = window.innerWidth*0.479 + 'px';
+				stop_Watch.align= "left";
 
-            stop_Watch = document.createElement("div");
-            stop_Watch.className = "stopwatch";
-           // stop_Watch.style.zIndex =1; 
-            stop_Watch.style.position = 'absolute';
-			//text2.style.zIndex = 1;    // if you still don't see the label, try uncommenting this
-			stop_Watch.style.width = 20;
-			stop_Watch.style.height= 10;
-			stop_Watch.style.top =  window.innerHeight*0.1+ 'px';
-			stop_Watch.style.left = window.innerWidth*0.479 + 'px';
-			stop_Watch.align= "left";
-
-            document.body.appendChild(stop_Watch)
-            console.log(stop_Watch.innerHTML);
+	            document.body.appendChild(stop_Watch)
+	            console.log(stop_Watch.innerHTML);
            // stop_Watch.className = "stopwatch";
-           //
-
-
              	parent = new THREE.Object3D();
 				scene.add( parent );
 				parent.position.set( 0,0,0);
                 console.log(parent.position)
 
-				//parent.add(camera)
-
-           		  scene.fog = new THREE.FogExp2( 0x000000, 0.0150 );
+           		scene.fog = new THREE.FogExp2( 0x000000, 0.0150 );
            		 
               //   scene.fog = new THREE.Fog( 0x000000, 0, 80 );
 			//	var data = generateHeight( dataW, dataH, perlinRandom);
@@ -431,13 +507,8 @@
 				pointLight.position.set( 0, 0, 0 );
 			//	scene.add( pointLight );
 
- 
 
-                boardTex=THREE.ImageUtils.loadTexture("textures/goteam1.png");	
-                boardTexAlpha=THREE.ImageUtils.loadTexture("textures/goteam1_alpha.png");
-
-
-                roadTex = THREE.ImageUtils.loadTexture("textures/lines/7.jpg");
+               // roadTex = THREE.ImageUtils.loadTexture("textures/lines/7.jpg");
 
                 var groundMaterial = new THREE.MeshDepthMaterial({
         
@@ -447,35 +518,28 @@
 			    plane.receiveShadow = true;
 			    plane.castShadow = true;
 			    plane.position.set (0, 0, 0);
-	          
-                
- 
-
-                roadMaterial = new THREE.MeshBasicMaterial( { 
-		        color       : 0xffffff,
-		        // map:  planeTex,
-                wireframe : true,
-		       //  fog: 			true
-		        } );
 
 
- 
+         //        roadMaterial = new THREE.MeshBasicMaterial( { 
+		       //  color       : 0xffffff,
+		       //  // map:  planeTex,
+         //        wireframe : true,
+		       // //  fog: 			true
+		       //  } );
+
 			    generateInfiniteLine()
-				for(var i=0;i<passTotal;i++){
-					
-				   	generateGroundLine( i, 0,CurrentroadCase,roadCase );
-				   	
+				for(var i=0;i<passTotal;i++){	
+				   	generateGroundLine( i, 0,CurrentroadCase,roadCase );		   	
 				}
 
                 generateCircle();
 
 				renderer = new THREE.WebGLRenderer({ antialias: true });
-				renderer.autoClear = false
+				//renderer.autoClear = false
 			   // renderer.setClearColor( scene.fog.color );
 				renderer.setPixelRatio( window.devicePixelRatio );
 			  	renderer.setSize( window.innerWidth, window.innerWidth*5/16);
-			 //	renderer.setSize( 1600,500);
-			 //	renderer.setSize( 2000,625);
+
 			 // renderer.sortObjects = false;
 				container.innerHTML = "";
                 renderer.gammaInput = true;
@@ -490,10 +554,6 @@
 				//container.appendChild( stats.domElement );
 
                 document.addEventListener( 'keydown', onKeyDown, false );
-				
-				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-
-				//
 
 				//window.addEventListener( 'resize', onWindowResize, false );
 
@@ -518,10 +578,6 @@
                GeneralLineW=THREE.Math.clamp(GeneralLineW, 0,50) 
 			}
 			function onWindowResize() {
-               
-			
-				SCREEN_WIDTH = window.innerWidth;
-				SCREEN_HEIGHT = window.innerHeight;
 
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
@@ -631,11 +687,18 @@
             function generateCirclePast(start,_offset){
 
 	            uniformsPast = {
-	            	innerCol :{ type: 'v3', value: new THREE.Vector3(0.1, 0.3, 0.9)},
-	            	strokeCol:{ type: 'v3', value: new THREE.Vector3(0.0, 0.0, 1.0)},
-	            	opacity:{ type: 'f', value: 0.0 },
-	            	radius: { type: 'f', value: 0.2 },
-					stroke: { type: "f", value: 0.1 }
+	            	  uTime: { type: 'f', value: 0.0 },
+				      uFrontColor: { type: 'v4', value: new THREE.Vector4(0.1, 0.3, 0.9, 1.0)},
+				      uBackColor: { type: 'v4', value: new THREE.Vector4(0.0, 0.0, 0.0, 0.0) },
+				      uIsSolid: { type: 'f', value: 0.0 },
+				      uHighlightCenter: { type: 'f', value: 0.0},
+				      uNumOfMiles: { type: 'f', value: 0.0 },
+				      uActiveDist: { type: 'f', value: 0.0 },
+				      uRPM: { type: 'f', value: 0.0 },
+				      uIntensity: { type: 'f', value: 0.5 },
+				      uRotation: { type: 'f', value: 0.4 },
+				      uTransparent: { type: 'f', value: 1.0 },
+				      uMileStoneAnimTime: { type: 'f', value: 0.0 }
 				};
 
  
@@ -654,7 +717,7 @@
                 circlePast =  new THREE.Mesh( californiaShape, materialCPast );
 
 				circlePast.position.set( 4, 1.3, 27.5);
-                circlePast.scale.set(0.55,0.55,0.55); 
+                circlePast.scale.set(0.65,0.65,0.65); 
 				circlePast.renderOrder = 2;
 
 			    scene.add(circlePast);
@@ -774,28 +837,24 @@
             }
 
              function generateMileMarker(_times){
-                 var miles=Math.ceil(times/40)
+                 var miles=(times/40).toFixed(1)
                 // ("" +times/20).slice(0,-2);   
               
                  var textmaterial = new THREE.MeshPhongMaterial({
 			        color: 0xffffff
 			    });
 			    var textGeom = new THREE.TextGeometry(  miles+' Miles', {
-			    	size :7.0,
+			    	size :6.0,
 					height:0.0,
 			        font: 'graphik black' // Must be lowercase!
 			    });
 			    var textMesh = new THREE.Mesh( textGeom, textmaterial );
 
-			    // Do some optional calculations. This is only if you need to get the
-			    // width of the generated text
 			    textGeom.computeBoundingBox();
 			    textGeom.textWidth = textGeom.boundingBox.max.x - textGeom.boundingBox.min.x;
 			    
 			    pivot = new THREE.Object3D();
 				pivot.add( textMesh);
-				
-				// pivot.rotateY= Math.PI/2;
 
 				textMesh.rotation.x  =- Math.PI/2;
 
@@ -820,6 +879,14 @@
 						fog:true
  
 				} )  
+
+				var GateMaterial= new THREE.MeshBasicMaterial( {
+                 color: 0xffFFFF ,
+                 side:THREE.DoubleSide,
+                 fog:true
+                } )
+
+
                 var meshWidth=0.3;
 
                 if (curCase==1 && Case==1){
@@ -838,7 +905,6 @@
                    if (Percentage<0.3){
                   	Percentage=0.3
                   }
-          
                   console.log(roadCase,Percentage)
                   Percentage=THREE.Math.clamp(Percentage,0,1);
                   case13( 1-Percentage)
@@ -850,18 +916,16 @@
                   Percentage=THREE.Math.clamp(Percentage,0,1);
                   case12(Percentage)
                 }else if(curCase==2 && Case==2){
-                case12(0);
+                  case12(0);
                 }else if(curCase==2 && Case==3){
                   incrementer += 1;
                   Percentage += Math.pow(1.1, incrementer)*0.03;
-                      if (Percentage<0.3){
-                  	Percentage=0.3
-                  }
-                 // Percentage += Math.pow(1.5, incrementer)*0.03;
+                    if (Percentage<0.3){
+                  		Percentage=0.3
+                  	}
                   console.log(roadCase,Percentage)
                   Percentage=THREE.Math.clamp(Percentage,0,1);
                   case23(1-Percentage)
-
                 }else if(curCase==3 && Case==1){
                   incrementer += 1;
                   Percentage += Math.pow(1.2, incrementer)*0.024;
@@ -875,11 +939,9 @@
                   Percentage=THREE.Math.clamp(Percentage,0,1);
                   case23( Percentage)
                 }else if(curCase==3 && Case==3){
-
-                case23(0)
+               	  case23(0)
                 }
 
-            
                 function case12( _Percentage){
                 ang= Math.PI / 2* _Percentage;
               
@@ -887,24 +949,9 @@
                // var geometryGateLine=[];
 				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
                 geometryGateLine.vertices.push(new THREE.Vector3(1600*Math.sin(-ang), 1600*Math.cos(ang), 0));
-                
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set ( -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
-                
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set ( -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
 
-                var GateMaterial= new THREE.MeshBasicMaterial( {
-                 color: 0xffFFFF ,
-                 side:THREE.DoubleSide,
-                 fog:true
-                } )
+                generateGroundLine(geometryGateLine , lineMaterial,  -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset)
+	            generateGroundLine(geometryGateLine , lineMaterial, -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth)
 
                 var geom = new THREE.Geometry(); 
 				var v1 = new THREE.Vector3(0,0,0);
@@ -912,13 +959,9 @@
 				var v3 = new THREE.Vector3(1600*Math.sin(-ang),1600*Math.cos(ang), -meshWidth);
                 var v4 = new THREE.Vector3(0,0,-meshWidth);
 
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
-  
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
+				geom.vertices.push(v1,v2,v3,v4);
+                geom.faces.push( new THREE.Face3( 0, 1, 2 ), new THREE.Face3( 0, 2, 3 ) );
+
                 var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
                 rectMesh.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
                 Gates.push(rectMesh)
@@ -950,324 +993,219 @@
 				var v3 = new THREE.Vector3(1600*Math.sin(ang),1600*Math.cos(ang), -meshWidth);
                 var v4 = new THREE.Vector3(0,0,-meshWidth);
 
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
+				geom.vertices.push(v1,v2,v3,v4);
   
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
+                geom.faces.push( new THREE.Face3( 0, 1, 2 ),new THREE.Face3( 0, 2, 3 ) );
+
                 var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
                 rectMesh.position.set ( dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
                 Gates.push(rectMesh)
                 parent.add(rectMesh);
-
-
-
-
 
                 }
                 
 
                 function case23( _Percentage){
                 
-                var geometryGateLine=new THREE.Geometry();
+	                var geometryGateLine=new THREE.Geometry();
 
-				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
-                geometryGateLine.vertices.push(new THREE.Vector3(0, 40+280*_Percentage, 0));
-                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0));
+					geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+	                geometryGateLine.vertices.push(new THREE.Vector3(0, 40+280*_Percentage, 0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0));
 
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-                groundLine.position.set (  -dataW*scaleW/2, 0,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset); 
-			    groundLines.push(groundLine)
-			    groundLine .renderOrder = -16;
-			    parent.add( groundLine);
-                   
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set ( -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
+					generateGroundLine(geometryGateLine , lineMaterial, -dataW*scaleW/2, 0,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset)
+	                generateGroundLine(geometryGateLine , lineMaterial, -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth)
 
-                var GateMaterial= new THREE.MeshBasicMaterial( {
-                 color: 0xffFFFF ,
-                 side:THREE.DoubleSide,
-                 fog:true
-                } )
+	                var geom = new THREE.Geometry(); 
+					var v1 = new THREE.Vector3(0,0,0);
+					var v2 = new THREE.Vector3(0, 40+280*_Percentage, 0);
+					var v3 = new THREE.Vector3(0, 40+280*_Percentage, -meshWidth);
+	                var v4 = new THREE.Vector3(0,0,-meshWidth);
+	                var v5 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0);
+	                var v6 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
 
-                var geom = new THREE.Geometry(); 
-				var v1 = new THREE.Vector3(0,0,0);
-				var v2 = new THREE.Vector3(0, 40+280*_Percentage, 0);
-				var v3 = new THREE.Vector3(0, 40+280*_Percentage, -meshWidth);
-                var v4 = new THREE.Vector3(0,0,-meshWidth);
-                var v5 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0);
-                var v6 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
+					geom.vertices.push(v1,v2,v3,v4,v5,v6);
 
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
-                geom.vertices.push(v5);
-                geom.vertices.push(v6);
+	                geom.faces.push( 
+		                new THREE.Face3( 0, 1, 2 ),
+		                new THREE.Face3( 0, 2, 3 ),
+		                new THREE.Face3( 1, 2, 5 ),
+		                new THREE.Face3( 4, 1, 5 ) 
+	                );
+	                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
+	                rectMesh.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+	                Gates.push(rectMesh)
+	                parent.add(rectMesh);
 
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
-                geom.faces.push( new THREE.Face3( 1, 2, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 1, 5 ) );
-                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
-                rectMesh.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-                Gates.push(rectMesh)
-                parent.add(rectMesh);
+	                var geometryGateLine=new THREE.Geometry();
 
+					geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+	                geometryGateLine.vertices.push(new THREE.Vector3(0, 40+280*_Percentage,0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,40+280*_Percentage,0));
 
-                var geometryGateLine=new THREE.Geometry();
+	                generateGroundLine(geometryGateLine , lineMaterial, dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset)
+	                generateGroundLine(geometryGateLine , lineMaterial, dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth)
 
-				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
-                geometryGateLine.vertices.push(new THREE.Vector3(0, 40+280*_Percentage,0));
-                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,40+280*_Percentage,0));
-                
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set (  dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-			    groundLines.push(groundLine)
-			    groundLine .renderOrder = -16;
-			    parent.add( groundLine);
-               
+	                var geom = new THREE.Geometry(); 
+					var v1 = new THREE.Vector3(0,0,0);
+					var v2 = new THREE.Vector3(0, 40+280*_Percentage, 0);
+					var v3 = new THREE.Vector3(0, 40+280*_Percentage, -meshWidth);
+	                var v4 = new THREE.Vector3(0,0,-meshWidth);
+	                var v5 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,0);
+	                var v6 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
 
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set ( dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
+					geom.vertices.push(v1,v2,v3,v4,v5,v6);
 
+	                geom.faces.push( 
+	                	new THREE.Face3( 0, 1, 2 ), 
+	                  	new THREE.Face3( 0, 2, 3 ),
+	               		new THREE.Face3( 1, 2, 5 ), 
+	               		new THREE.Face3( 4, 1, 5 ) 
+	                )
 
-                var geom = new THREE.Geometry(); 
-				var v1 = new THREE.Vector3(0,0,0);
-				var v2 = new THREE.Vector3(0, 40+280*_Percentage, 0);
-				var v3 = new THREE.Vector3(0, 40+280*_Percentage, -meshWidth);
-                var v4 = new THREE.Vector3(0,0,-meshWidth);
-                var v5 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,0);
-                var v6 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
-
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
-                geom.vertices.push(v5);
-                geom.vertices.push(v6);
-
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
-                geom.faces.push( new THREE.Face3( 1, 2, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 1, 5 ) );
-                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
-                rectMesh.position.set ( dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-                Gates.push(rectMesh)
-                parent.add(rectMesh);
+	                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
+	                rectMesh.position.set ( dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+	                Gates.push(rectMesh)
+	                parent.add(rectMesh);
 
  				}
+
+
                 function case13( _Percentage){
                 
-                var geometryGateLine=new THREE.Geometry();
+	                var geometryGateLine=new THREE.Geometry();
 
-				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0));
-				geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 0, 0));
-                geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage, 0));
-                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0));
+					geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0));
+					geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 0, 0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage, 0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0));
+	 
+					generateGroundLine(geometryGateLine , lineMaterial,  -dataW*scaleW/2, 0,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset)
+	                generateGroundLine(geometryGateLine , lineMaterial, -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth)
 
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-			 //	groundLine.position.set (  -dataW*scaleW/2-640, 0,  (-dataH*scaleH)*start+_offset); 
-                groundLine.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+ (-dataH*scaleH)*start+_offset); 
-			    groundLines.push(groundLine)
-			    parent.add( groundLine);
-				groundLine .renderOrder = -16;
-                
-				var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set ( -dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
+	                var geom = new THREE.Geometry(); 
+					var v1 = new THREE.Vector3(0,0,0);
+					var v2 = new THREE.Vector3(-1200*_Percentage, 0, 0);
+					var v3 = new THREE.Vector3(-1200*_Percentage, 0, -meshWidth);
+	                var v4 = new THREE.Vector3(0,0,-meshWidth);
+	                var v5 = new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage,0);
+	                var v6 = new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage,-meshWidth);       
+	                var v7 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0);
+	                var v8 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
 
-                var GateMaterial= new THREE.MeshBasicMaterial( {
-                 color: 0xffFFFF ,
-                 side:THREE.DoubleSide,
-                 fog:true
-                } )
+					geom.vertices.push(v1,v2,v3,v4,v5,v6,v7,v8);
 
-                var geom = new THREE.Geometry(); 
-				var v1 = new THREE.Vector3(0,0,0);
-				var v2 = new THREE.Vector3(-1200*_Percentage, 0, 0);
-				var v3 = new THREE.Vector3(-1200*_Percentage, 0, -meshWidth);
-                var v4 = new THREE.Vector3(0,0,-meshWidth);
-                var v5 = new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage,0);
-                var v6 = new THREE.Vector3(-1200*_Percentage, 40+280*_Percentage,-meshWidth);       
-                var v7 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,0);
-                var v8 = new THREE.Vector3(dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
+	                geom.faces.push( 
+		                new THREE.Face3( 0, 1, 2 ),
+		               	new THREE.Face3( 0, 2, 3 ),
+		               	new THREE.Face3( 1, 2, 5 ),
+		                new THREE.Face3( 4, 1, 5 ),
+		                new THREE.Face3( 4, 5, 7 ),
+		                new THREE.Face3( 4, 7, 6) 
+	                );
 
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
-                geom.vertices.push(v5);
-                geom.vertices.push(v6);
-                geom.vertices.push(v7);
-                geom.vertices.push(v8);
+	                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
+	                rectMesh.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+	                Gates.push(rectMesh)
+	                parent.add(rectMesh);
 
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
-               	geom.faces.push( new THREE.Face3( 1, 2, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 1, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 5, 7) );
-                geom.faces.push( new THREE.Face3( 4, 7, 6 ) );
-                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
-                rectMesh.position.set ( -dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-                Gates.push(rectMesh)
-                parent.add(rectMesh);
-
-                var geometryGateLine=new THREE.Geometry();
- 
-				geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
-				geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 0, 0));
-                geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,0));
-                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,40+280*_Percentage,0));
-                
-                var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set (  dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-			    groundLines.push(groundLine)
-			    groundLine .renderOrder = -16;
-			    parent.add( groundLine);
+	                var geometryGateLine=new THREE.Geometry();
+	 
+					geometryGateLine.vertices.push(new THREE.Vector3(0, 0, 0))	;
+					geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 0, 0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,0));
+	                geometryGateLine.vertices.push(new THREE.Vector3(-dataW*scaleW/2,40+280*_Percentage,0));
 
 
-				var  groundLine  = new THREE.Line( geometryGateLine , lineMaterial)
-				groundLine.position.set (  dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth); 
-			    groundLines.push( groundLine)
-			    parent.add(  groundLine);
-                groundLine .renderOrder = -16;
+	                generateGroundLine(geometryGateLine , lineMaterial,  -dataW*scaleW/2, 0, dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset)
+	                generateGroundLine(geometryGateLine , lineMaterial,  dataW*scaleW/2, 0, 3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset-meshWidth)
 
-            
+	                var geom = new THREE.Geometry(); 
+					var v1 = new THREE.Vector3(0,0,0);
+					var v2 = new THREE.Vector3(1200*_Percentage, 0, 0);
+					var v3 = new THREE.Vector3(1200*_Percentage, 0, -meshWidth);
+	                var v4 = new THREE.Vector3(0,0,-meshWidth);
+	                var v5 = new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,0);
+	                var v6 = new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,-meshWidth);       
+	                var v7 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,0);
+	                var v8 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
 
-                var geom = new THREE.Geometry(); 
-				var v1 = new THREE.Vector3(0,0,0);
-				var v2 = new THREE.Vector3(1200*_Percentage, 0, 0);
-				var v3 = new THREE.Vector3(1200*_Percentage, 0, -meshWidth);
-                var v4 = new THREE.Vector3(0,0,-meshWidth);
-                var v5 = new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,0);
-                var v6 = new THREE.Vector3(1200*_Percentage, 40+280*_Percentage,-meshWidth);       
-                var v7 = new THREE.Vector3(-dataW*scaleW/2+1, 40+280*_Percentage,0);
-                var v8 = new THREE.Vector3-(dataW*scaleW/2+1, 40+280*_Percentage,-meshWidth);
+					geom.vertices.push(v1,v2,v3,v4,v5,v6,v7,v8);
 
-				geom.vertices.push(v1);
-				geom.vertices.push(v2);
-				geom.vertices.push(v3);
-                geom.vertices.push(v4);
-                geom.vertices.push(v5);
-                geom.vertices.push(v6);
-                geom.vertices.push(v7);
-                geom.vertices.push(v8);
+	                geom.faces.push( 
+		                new THREE.Face3( 0, 1, 2 ),
+		               	new THREE.Face3( 0, 2, 3 ),
+		               	new THREE.Face3( 1, 2, 5 ),
+		                new THREE.Face3( 4, 1, 5 ),
+		                new THREE.Face3( 6, 4, 5 ),
+		                new THREE.Face3( 6, 5, 7 ) 
+	                );
 
-                geom.faces.push( new THREE.Face3( 0, 1, 2 ) );
-                geom.faces.push( new THREE.Face3( 0, 2, 3 ) );
-               	geom.faces.push( new THREE.Face3( 1, 2, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 1, 5 ) );
-                geom.faces.push( new THREE.Face3( 4, 5, 7) );
-                geom.faces.push( new THREE.Face3( 4, 7, 6 ) );
-                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
-                rectMesh.position.set ( dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
-                Gates.push(rectMesh)
-				parent.add(rectMesh);
-
-
-
-
-
+	                var rectMesh = new THREE.Mesh( geom, GateMaterial) ;
+	                rectMesh.position.set ( dataW*scaleW/2, 0,  3*(dataH*scaleH)+  (-dataH*scaleH)*start+_offset); 
+	                Gates.push(rectMesh)
+					parent.add(rectMesh);
 
 
                 }
+
+                function generateGroundLine(_geometryGateLine , _lineMaterial, _x,_y,_z){
+                    var groundLine  = new THREE.Line( _geometryGateLine , _lineMaterial)
+	                groundLine.position.set ( _x, _y, _z); 
+				    groundLines.push(groundLine)
+				    parent.add( groundLine);
+					groundLine .renderOrder = -16;
+
+				}
 	
                }
- 
-
-			function onDocumentMouseMove(event) {
-
-				//mouseX = event.clientX - windowHalfX;
-				//mouseY = event.clientY - windowHalfY;
-
-			}
-
-			function loadTextures() {
-
-				//textureCounter += 1;
-
-				//if ( textureCounter == 3 )	{
-
-					 visible = true;
-
-				//}
-
-			}
 
 			function animate() {
-
 				requestAnimationFrame( animate );
-
 				render();
 				//stats.update();
-
 			}
           
-		
-
 			function render() {
-			  var delta = clock.getDelta();
+			  	var delta = clock.getDelta();
    
 
-               MilesUpdate(CurrenttotalMiles)
-
+               	MilesUpdate(CurrenttotalMiles)
            	 	if (typeof(circlePast) !== 'undefined'){
-            	RecordMilesUpdate(RecordtotalMiles)
+            		RecordMilesUpdate(RecordtotalMiles)
                 }
            
-               speed=THREE.Math.clamp(speed,0,2)
+                speed=THREE.Math.clamp(speed,0,2)
 
-               if ( visible){
+              
 
-
-               if (Stopwatch.check()==timePeriod[roundCount]){
-                		if (roundCount%2==1){
-                			console.log(Stopwatch.check())
-	                		Stopwatch.restart();
-	                		console.log("rest")
-	                		recordList.push(recordTemp)
-	                		recordTemp=0;
-	                	    smoothAdd=-0.02
-                			roundCount=(roundCount+1)%timePeriod.length;
-                			console.log(Stopwatch.check())
-                		}else {
-                			//console.log(Stopwatch.check())
-                			//console.log("prepare")
-	                		countdown=1;
-	                	 	smoothAdd=0.02
-
-                	}
-                	  
-                }
+	            if (Stopwatch.check()==timePeriod[roundCount]){  
+		            Stopwatch.restart();
+		            recordList.push(recordTemp)
+		            recordTemp=0;
+		            smoothAdd=-0.02
+	                roundCount=(roundCount+1)%timePeriod.length;
+	                console.log(Stopwatch.check())
+	                	  
+	            }
                     
 
                 recordTemp+=speed;
 
 
-                 for(var i in groundLines){ 
-	                 // curveL[i].translateZ(delta *speed*25);
-	                 // curveR[i].translateZ(delta *speed*25);
-	                groundLines[i].translateZ(delta *speed*25);
-	               
-      
-	             }
-	              for(var i in Gates){ 
+	            for(var i in groundLines){ 
+		                 // curveL[i].translateZ(delta *speed*25);
+		                 // curveR[i].translateZ(delta *speed*25);
+		            groundLines[i].translateZ(delta *speed*25);
+		               
+	      
+		        }
+		        for(var i in Gates){ 
 					Gates[i].translateZ(delta *speed*25);
-	              }
- 				for(var i in mileMarkerList){ 
+		        }
+	 			for(var i in mileMarkerList){ 
 					mileMarkerList[i].translateZ(delta *speed*25);
-	              }
+		        }
  
 
 	             //  for(var i in roadMeshList){ 
@@ -1275,88 +1213,83 @@
 	             // }
 
                  
-                 if (billBoardList[0]){
+	            if (billBoardList[0]){
 
-                 	billBoardList[0].translateZ(delta *speed*25);
-                   
-				      if (billBoardList[0].position.z>=camera.position.z){
-				      	console.log("Go team!")
-						Stopwatch.restart();
-						scene.remove(billBoardList[0]);
-						billBoardList.shift();
-				      }
-                 }
-
-
-	             meshCurrentTranslate+=delta *speed*25;
-	             meshCurrentV=meshCurrentTranslate/scaleH*2 ;
-	           //  console.log(meshCurrentV);ww
-                 uniforms.uRPM.value  = 0.1+speed;
-                 uniforms.uRotation.value +=delta * (0.01+speed*1)*1.0;
-                
-                 uniforms.uIntensity.value =((speed-0.0)+0.1)*300.0 ;
-
+	                billBoardList[0].translateZ(delta *speed*25);
+	                   
+					    if (billBoardList[0].position.z>=camera.position.z){
+					      	console.log("Go team!")
+							Stopwatch.restart();
+							scene.remove(billBoardList[0]);
+							billBoardList.shift();
+					    }
+	                }
+ 
+	            uniforms.uRPM.value  = 0.1+speed;
+	            uniforms.uRotation.value +=delta * (0.01+speed*1)*1.0;
+	                
+	            uniforms.uIntensity.value =((speed-0.0)+0.1)*300.0 ;	
+ 
                //|||| circlePast != null
                  
-                if (typeof circlePast != 'undefined' ){
+	            if (typeof circlePast != 'undefined' ){
+	    
+	                var temp= Math.abs(1/(circlePast.position.z-circle.position.z))*0.01 
+	                temp= Math.pow(temp,2)*(speed-defaultSpeed)
+	                temp=THREE.Math.clamp(temp,-0.0001,0.0001)
 
-                   var temp= Math.abs(1/(circlePast.position.z-circle.position.z))*0.01 
-                  temp= Math.pow(temp,2)*(speed-defaultSpeed)
-                  temp=THREE.Math.clamp(temp,-0.0001,0.0001)
+	                uniformsPast.uRPM.value  = 0.1+speed+(Math.random()-0.5);
+	                uniformsPast.uRotation.value +=delta * (0.01+speed*1)*1.0;
+	                uniformsPast.uIntensity.value =((speed-0.0)+0.1)*300.0 +temp*1000;
 
-                 var Pass=circle.position.z-circlePast.position.z;
-                if ((Pass>-0.2)&&(Pass<0.2)){
- 				 uniformsPast.stroke.value=0.1+(0.2-Math.abs(Pass))*10;
-                 uniformsPast.stroke.value=THREE.Math.clamp(uniformsPast.stroke.value,0.1,3)
-                 //console.log("pass")
-
-                 }
+	                var Pass=circle.position.z-circlePast.position.z;
+	                if ((Pass>-0.1)&&(Pass<0.1)){
+	 			//	 uniformsPast.stroke.value=0.1+(0.2-Math.abs(Pass))*10;
+	             //    uniformsPast.stroke.value=THREE.Math.clamp(uniformsPast.stroke.value,0.1,3)
+	                 //console.log("pass")
+	                uniformsPast.uHighlightCenter.value=(0.1-Math.abs(Pass))*10.0;
+	                uniformsPast.uHighlightCenter.value=THREE.Math.clamp(uniformsPast.uHighlightCenter.value,0.0,1.0)
+            
+                 	}
 				
-                  circlePast.translateZ(delta* (Math.random()-0.5)*0.2)
-                  circlePast.position.z +=delta *temp*1000;
-                  circlePast.position.z +=delta *(speed-defaultSpeed)*0.0015;
+	                circlePast.translateZ(delta* (Math.random()-0.5)*0.2)
+	                circlePast.position.z +=delta *temp*1000;
+	                circlePast.position.z +=delta *(speed-defaultSpeed)*0.0015;
                  // circlePast.position.z +=delta *  1/  (Math.abs((circlePast.position.z-circle.position.z)*3))
 
-                  circlePast.position.z=THREE.Math.clamp(circlePast.position.z,10, 28)
+                    circlePast.position.z=THREE.Math.clamp(circlePast.position.z,10, 28)
               //    console.log(circlePast.position.z)
 				}
 					
                 
 	            if (groundLines[0].position.z>=passCount*dataH*scaleH){
 
-                         times++;
-                         if (times%4==0){
-
-                         CurrenttotalMiles+=0.1
-            	 		 RecordtotalMiles+=0.1; 
-                         }
-                     
-             
-
+                        times++;
+                        if (times%4==0){
+                        	CurrenttotalMiles+=0.1
+            	 			RecordtotalMiles+=0.1; 
+                        }
 
 		 				if (CurrentroadCase!=roadCase){
-		                
-		                
+		                         
 		                }
 
-			             reset=true;
-			             var offset_adj=groundLines[0].position.z-passCount*dataH*scaleH   
+			            reset=true;
+			            var offset_adj=groundLines[0].position.z-passCount*dataH*scaleH   
                          
 		                generateGroundLine(passTotal-passCount+3,offset_adj,CurrentroadCase,roadCase);
                          
-                         if (countdown==1){
+                        if (countdown==1){
                           //  generateBoard(passTotal-passCount+3,offset_adj);
                             countdown=0;
                             roundCount=(roundCount+1)%timePeriod.length;
 
-                         }
+                        }
 
-
-                         if ((recordList.length>0)&&(typeof circlePast === 'undefined' )){
+                        if ((recordList.length>0)&&(typeof circlePast === 'undefined' )){
                          	console.log()
 							generateCirclePast( passTotal-passCount+3, offset_adj )
-						 }
-		                
+						}
 
 		                if (Percentage==1){
 		                	CurrentroadCase=roadCase;
@@ -1372,69 +1305,62 @@
                             for(var j=0;j<2;j++){
 				               parent.remove( Gates[0])
 				               Gates.shift();
-
 				             }
-
-				             
 			            }
 
-			           if ((times>18)&&(times%40==39)){
-
-                             if (mileMarkerList.length>0){
+			            if ((times>18)&&(times%20==19)){
+                            if (mileMarkerList.length>0){
  								parent.remove(mileMarkerList[0])
                             	mileMarkerList.shift();
-
-                              }
-                     
-                              generateMileMarker(times);
-                            
-			           }
-
+                            }                    
+                            generateMileMarker(times);                           
+			            }
 
 	            }
 
-	         
-                    var verticeN=Math.floor(meshCurrentV)+30;
-                    verticeN=THREE.Math.clamp(verticeN, 0,200)
-
-                   var Ptemp=parent.position.y
-				   var Ctemp=camera.position.y
-				   var temp=Ctemp- Ptemp
-                   camera.lookAt( new THREE.Vector3(0,camera.position.y, -100));
-
+                    camera.lookAt( new THREE.Vector3(0,camera.position.y, -100));
 				 //  renderer.clear();
-				  renderer.render( scene, camera );
+				  	renderer.render( scene, camera );
 				//  renderer.clearDepth();
 				//  renderer.render( scene2, camera );
 
-				}
+				 
 			}
+        
 
+   //       startTimer(fiveMinutes, display);
 
-         function drawLine(lineMaterial, x1, y1 , z1, x2, y2, z2, thickness){
-                	var group=new THREE.Object3D();
-                	thickness=2;
-				    for (i = 0; i < thickness * 2; i++) {  // multiplied it by 2 to be more granule pixels
-				        var routerLine1Geometry = new THREE.Geometry();
-				        routerLine1Geometry.vertices.push( new THREE.Vector3(x1, y1+i/4, z1));//divided it by 4 to be more granule pixels 
-				        routerLine1Geometry.vertices.push( new THREE.Vector3(x2, y2+i/4, z2));
-				        var routerLine1 = new THREE.Line( routerLine1Geometry, lineMaterial );
-                        group.add(routerLine1);
-				    }
-				    for (i = 0; i < thickness * 2; i++) { 
-				        var routerLine1Geometry = new THREE.Geometry();
-				        routerLine1Geometry.vertices.push( new THREE.Vector3(x1, y1-i/4, z1)  );  // 
-				        routerLine1Geometry.vertices.push( new THREE.Vector3(x2, y2-i/4, z2)  );
-				        var routerLine1 = new THREE.Line( routerLine1Geometry, lineMaterial );
-				        group.add(routerLine1);
-				    }
-				    return group;
-				}
+		 // function startTimer(duration, display) {
+		 //    var diff,
+		 //        minutes,
+		 //        seconds;
+		 //    function timer() {
+		 //        // get the number of seconds that have elapsed since 
+		 //        // startTimer() was called
+		 //        diff = duration - ((delta) / 1000) | 0);
 
+		 //        // does the same job as parseInt truncates the float
+		 //        minutes = (diff / 60) | 0;
+		 //        seconds = (diff % 60) | 0;
+
+		 //        minutes = minutes < 10 ? "0" + minutes : minutes;
+		 //        seconds = seconds < 10 ? "0" + seconds : seconds;
+
+		 //        display.textContent = minutes + ":" + seconds; 
+
+		 //        if (diff <= 0) {
+		 //            start = Date.now() + 1000;
+		 //        }
+		 //    };
+		   
+		 
+		     
+		//}
 
 		</script>
 
-		<script src="js/stopwatch.js"></script>
+        <script src="js/stopwatch.js"></script>
+		 
 
 	</body>
 </html>
